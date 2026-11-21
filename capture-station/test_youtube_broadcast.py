@@ -137,7 +137,7 @@ class TagTests(unittest.TestCase):
             pipe.tags=self.state()
             canvas=pipe.compose(pipe.renderer.render({}))
             self.assertEqual(canvas.size,(1280,720))
-            self.assertIsNotNone(canvas.crop((528,377,758,660)).getbbox())
+            self.assertIsNotNone(canvas.crop((504,377,734,660)).getbbox())
         finally:
             pipe.close();os.close(pipe.writer)
 
