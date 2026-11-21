@@ -86,21 +86,21 @@ class AircraftOverlay:
   pitch=fov['elevation_deg']
   detail=f'{pitch:g}° ↑ · {fov["vertical_deg"]:.1f}° FoV' if pitch is not None else 'Set camera elevation'
   draw.text((460,556),detail,font=self.small,fill=ink,anchor='rt')
-  side=Image.new('RGBA',(460,480));sd=ImageDraw.Draw(side);x0,y0,w,top=0,440,459,20;scale=w/radius
+  side=Image.new('RGBA',(460,480));sd=ImageDraw.Draw(side);x0,y0,w,top=0,440,459,20;scale=w/radius;y_scale=(y0-top)/40000;aspect=y_scale*6076.11549/scale
   # Cone is drawn on a clipped layer so steep elevation never covers headings.
   cone=Image.new('RGBA',(w,y0-top));cd=ImageDraw.Draw(cone)
   if pitch is not None:
    angles=[math.radians(pitch-fov['vertical_deg']/2),math.radians(pitch+fov['vertical_deg']/2)]
-   verts=[(0,y0-top)]+[(math.cos(v)*5000,y0-top-math.sin(v)*5000) for v in angles]
+   verts=[(0,y0-top)]+[(math.cos(v)*5000,y0-top-math.sin(v)*5000*aspect) for v in angles]
    cd.polygon(verts,fill=(*ink[:3],30));cd.line(verts+[verts[0]],fill=(*ink[:3],140),width=1)
-   a=math.radians(pitch);cd.line((0,y0-top,math.cos(a)*5000,y0-top-math.sin(a)*5000),fill=(*ink[:3],140),width=1)
+   a=math.radians(pitch);cd.line((0,y0-top,math.cos(a)*5000,y0-top-math.sin(a)*5000*aspect),fill=(*ink[:3],140),width=1)
   side.alpha_composite(cone,(x0,top));sd=ImageDraw.Draw(side)
   for frac in (.5,1):
-   y=y0-(y0-top)*frac;sd.line((x0,y,x0+w,y),fill=ink,width=1);sd.text((x0+4,y-4),f'{round((y0-y)/scale*6076.11549/1000)}k ft',font=self.small,fill=ink,anchor='lb')
+   y=y0-(y0-top)*frac;sd.line((x0,y,x0+w,y),fill=ink,width=1);sd.text((x0+4,y-4),f'{round((y0-y)/y_scale/1000)}k ft',font=self.small,fill=ink,anchor='lb')
   sd.line((x0,top,x0,y0,x0+w,y0),fill=ink,width=1)
   sd.text((x0,y0+8),'0',font=self.small,fill=ink,anchor='lt');sd.text((x0+w,y0+8),f'{round(radius*1.150779448)} mi',font=self.small,fill=ink,anchor='rt')
   for v in side_rows:
-   x=x0+v['distance_nm']*scale;y=y0-v['relative_height_ft']/6076.11549*scale
+   x=x0+v['distance_nm']*scale;y=y0-v['relative_height_ft']*y_scale
    if not top<=y<=y0 or not x0<=x<=x0+w:continue
    sd.ellipse((x-3,y-3,x+3,y+3),fill=ink)
    if v['in_fov']:sd.rectangle((x-8,y-8,x+8,y+8),outline=ink,width=2)
