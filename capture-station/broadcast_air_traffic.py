@@ -117,4 +117,4 @@ class AircraftOverlay:
   row.alpha_composite(canvas.crop((0,1096,460,1120)),(516,542))
   return row.resize((488,283),Image.Resampling.LANCZOS)
  def draw(self,canvas,ink):
-  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-518,canvas.height-343))
+  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-518,canvas.height-309))

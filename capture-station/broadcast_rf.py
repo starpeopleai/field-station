@@ -7,7 +7,7 @@ from PIL import Image,ImageDraw,ImageFont
 WIDTH=230
 HEIGHT=283
 LEFT=504
-BOTTOM=60
+BOTTOM=26
 OUTPUT_WIDTH=1280
 OUTPUT_HEIGHT=720
 FONT=Path(__file__).resolve().parents[1]/'uap-lab/static/fonts/IBMPlexMono-Regular.woff2'
@@ -21,7 +21,7 @@ class SpectrumOverlay:
  def palette(self,frame):
   if frame is not None:
    w,h=frame.size
-   box=(int(w*LEFT/1280),int(h*(720-343)/720),int(w*1250/1280),int(h*(720-60)/720))
+   box=(int(w*LEFT/1280),int(h*(OUTPUT_HEIGHT-BOTTOM-HEIGHT)/OUTPUT_HEIGHT),int(w*1250/1280),int(h*(OUTPUT_HEIGHT-BOTTOM)/OUTPUT_HEIGHT))
    pixels=list(frame.convert('RGB').crop(box).resize((32,16)).getdata())
    light=sum(.2126*r+.7152*g+.0722*b for r,g,b in pixels)/(255*len(pixels))
    if light>.65:self.bright=True
