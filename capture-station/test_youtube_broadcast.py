@@ -52,7 +52,7 @@ class BroadcastTests(unittest.TestCase):
         standby = renderer.render(data, now=100, standby=True)
         self.assertNotEqual(live.tobytes(), standby.tobytes())
         self.assertGreater(standby.getchannel('A').getextrema()[1], 0)
-        self.assertEqual(renderer.render([], now=100).size, (230,112))
+        self.assertEqual(renderer.render([], now=100).size, (230,283))
 
     def test_encoder_keeps_camera_and_rf_on_independent_inputs(self):
         config = {'publish_url':'rtmps://a.rtmps.youtube.com/live2/test-key','source':'http://127.0.0.1:8090/preview.mjpeg'}
@@ -137,7 +137,7 @@ class TagTests(unittest.TestCase):
             pipe.tags=self.state()
             canvas=pipe.compose(pipe.renderer.render({}))
             self.assertEqual(canvas.size,(1280,720))
-            self.assertIsNotNone(canvas.crop((1020,97,1250,209)).getbbox())
+            self.assertIsNotNone(canvas.crop((528,377,758,660)).getbbox())
         finally:
             pipe.close();os.close(pipe.writer)
 

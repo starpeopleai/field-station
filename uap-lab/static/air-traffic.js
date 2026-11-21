@@ -13,7 +13,7 @@
   const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Lab-Token':token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(12000)});
   if(r.status===403){token='';throw Error('Reconnecting to station');}const v=await r.json();if(!r.ok)throw Error(v.error||'Air traffic unavailable');return v;
  }
- const css=document.createElement('link');css.rel='stylesheet';css.href='/air-traffic.css?v=10';document.head.append(css);
+ const css=document.createElement('link');css.rel='stylesheet';css.href='/air-traffic.css?v=13';document.head.append(css);
  const settings=document.querySelector('#stationSettings');
  if(settings){
   const area=document.createElement('div');area.className='air-traffic-settings';
@@ -79,7 +79,7 @@
    result.inFov=forward>0&&Math.abs(right)<=forward*Math.tan(radians(fov.horizontal_deg/2))&&Math.abs(up)<=forward*Math.tan(radians(fov.vertical_deg/2));return result;
   }
   function drawSide(fov,rows,range,color,fresh){
-   const c=sideCtx,x0=0,y0=250,w=519,top=50,scale=w/range;sidePoints=[];c.clearRect(0,0,520,300);c.strokeStyle=c.fillStyle=color;c.lineWidth=1.5;c.font=(canvas.clientWidth<180?'28':'20')+'px "IBM Plex Mono",monospace';c.textAlign='left';c.fillText('Side view',0,23);c.textAlign='right';c.font=(canvas.clientWidth<180?'24':'18')+'px "IBM Plex Mono",monospace';c.fillText(Number.isFinite(fov?.elevation_deg)?fov.elevation_deg+'° ↑ · '+fov.vertical_deg.toFixed(1)+'° FoV':'Set camera elevation',520,23);
+   const height=Math.max(300,Math.round(side.clientHeight/Math.max(1,side.clientWidth)*520));if(side.height!==height)side.height=height;const c=sideCtx,x0=0,y0=height-40,w=519,top=80,scale=w/range;sidePoints=[];c.clearRect(0,0,520,height);c.strokeStyle=c.fillStyle=color;c.lineWidth=1.5;c.font=(canvas.clientWidth<180?'28':'20')+'px "IBM Plex Mono",monospace';c.textAlign='left';c.fillText('Side view',0,23);c.textAlign='right';c.font=(canvas.clientWidth<180?'24':'18')+'px "IBM Plex Mono",monospace';c.fillText(Number.isFinite(fov?.elevation_deg)?fov.elevation_deg+'° ↑ · '+fov.vertical_deg.toFixed(1)+'° FoV':'Set camera elevation',520,23);
    c.globalAlpha=1;for(const fraction of [.5,1]){const y=y0-(y0-top)*fraction;c.beginPath();c.moveTo(x0,y);c.lineTo(x0+w,y);c.stroke();c.textAlign='left';c.font=(canvas.clientWidth<180?'24':'16')+'px "IBM Plex Mono",monospace';c.fillText(Math.round((y0-y)/scale*6076.11549/1000)+'k ft',x0+4,y-5);}c.globalAlpha=1;
    c.beginPath();c.moveTo(x0,top);c.lineTo(x0,y0);c.lineTo(x0+w,y0);c.stroke();c.textAlign='left';c.fillText('0',x0,y0+24);c.textAlign='right';c.fillText(Math.round(range*1.150779448)+' mi',x0+w,y0+24);
    if(Number.isFinite(fov?.elevation_deg)){const pitch=radians(fov.elevation_deg),half=radians(fov.vertical_deg/2);c.save();c.beginPath();c.rect(x0,top,w,y0-top);c.clip();c.beginPath();c.moveTo(x0,y0);for(const angle of [pitch-half,pitch+half])c.lineTo(x0+Math.cos(angle)*5000,y0-Math.sin(angle)*5000);c.closePath();c.globalAlpha=.12;c.fill();c.globalAlpha=.7;c.stroke();c.setLineDash([5,5]);c.beginPath();c.moveTo(x0,y0);c.lineTo(x0+Math.cos(pitch)*5000,y0-Math.sin(pitch)*5000);c.stroke();c.restore();}
