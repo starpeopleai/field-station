@@ -13,7 +13,7 @@
   const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Lab-Token':token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(12000)});
   if(r.status===403){token='';throw Error('Reconnecting to station');}const v=await r.json();if(!r.ok)throw Error(v.error||'Air traffic unavailable');return v;
  }
- const css=document.createElement('link');css.rel='stylesheet';css.href='/air-traffic.css?v=24';document.head.append(css);
+ const css=document.createElement('link');css.rel='stylesheet';css.href='/air-traffic.css?v=25';document.head.append(css);
  const settings=document.querySelector('#stationSettings');
  if(settings){
   const area=document.createElement('div');area.className='air-traffic-settings';
@@ -58,8 +58,8 @@
   const canvas=panel.querySelector('canvas'),ctx=canvas.getContext('2d'),state=panel.querySelector('.air-radar-state'),center=panel.querySelector('.air-radar-center'),tip=panel.querySelector('.air-radar-tip'),fovCount=panel.querySelector('.air-radar-fov-count'),cameraInfo=panel.querySelector('.air-radar-camera');let latest=null,points=[],busy=false,timer,requestFailed=false;
   const rf=document.querySelector('#rfOverlay');
   const column=document.createElement('div');column.id='liveTelemetry';viewer.append(column);if(rf)column.append(rf);column.append(panel);
-  if(rf){const controls=document.createElement('div');controls.className='rf-controls-column';rf.prepend(controls);const groupControls=()=>{for(const child of [...rf.children])if(child!==controls&&!child.matches('.rf-heading,canvas'))controls.append(child);};groupControls();new MutationObserver(groupControls).observe(rf,{childList:true});}
-  function ink(){panel.style.color=rf?.style.color||'#fff';draw();}
+  if(rf){const controls=document.createElement('div');controls.className='rf-overlay rf-controls-column';viewer.append(controls);const placeControls=()=>{const header=document.querySelector('.station-header');controls.style.top=Math.max(12,Math.max(header?.getBoundingClientRect().bottom||48,window.innerWidth<=600?(document.querySelector('#liveStatus')?.getBoundingClientRect().bottom||0):0)-viewer.getBoundingClientRect().top+12)+'px';};placeControls();const header=document.querySelector('.station-header');if(header)new ResizeObserver(placeControls).observe(header);window.addEventListener('resize',placeControls);const groupControls=()=>{for(const child of [...rf.children])if(child!==controls&&!child.matches('.rf-heading,canvas'))controls.append(child);};groupControls();new MutationObserver(groupControls).observe(rf,{childList:true});}
+  function ink(){const color=rf?.style.color||'#fff';panel.style.color=color;const controls=viewer.querySelector('.rf-controls-column');if(controls)controls.style.color=color;draw();}
   if(rf)new MutationObserver(ink).observe(rf,{attributes:true,attributeFilter:['style']});
   const radians=n=>n*Math.PI/180;
   function position(a,c){
