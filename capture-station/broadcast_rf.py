@@ -58,19 +58,19 @@ class SpectrumOverlay:
     if bins:displayed.append(max(bins))
    low,high=self.display_scale(role,displayed,now,current)
    text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,f'{high:.1f} dB',right=True)
-   for y in (42,215,389):draw.line((0,top+y,839,top+y),fill=ink,width=2)
+   for y in (42,209,377):draw.line((0,top+y,839,top+y),fill=ink,width=2)
    points=[]
    for x in range(840):
     start=int(x*len(values)/840);end=max(start+1,int((x+1)*len(values)/840));bins=[v for v in values[start:end] if finite(v)]
     if not bins:
      if len(points)>1:draw.line(points,fill=ink,width=2)
      points=[];continue
-    peak=max(bins);points.append((x,top+389-max(0,min(1,(peak-low)/(high-low)))*347))
+    peak=max(bins);points.append((x,top+377-max(0,min(1,(peak-low)/(high-low)))*335))
    if len(points)>1:draw.line(points,fill=ink,width=2)
    text(840,top+403,f'{low:.1f} dB',right=True)
    if role=='wide' and span[0]<=1590e6<1610e6<=span[1]:
     left=(1590e6-span[0])/(span[1]-span[0])*840;right=(1610e6-span[0])/(span[1]-span[0])*840;center=(left+right)/2;label_x=max(0,min(center+20,580))
-    draw.rectangle((left,top+42,right,top+389),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
+    draw.rectangle((left,top+42,right,top+377),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
     draw.line([(center,top+42),(center,top+32),(label_x-4,top+22)],fill=ink,width=1);text(label_x,top+2,'1590–1610 MHz')
    if not current:text(0,top+403,('Last reading '+str(int(age))+'s ago' if age is not None else 'No timestamp')+' · reconnecting')
   text(0,0,'RF spectrum',self.font)
