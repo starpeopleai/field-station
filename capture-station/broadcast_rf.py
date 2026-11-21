@@ -46,7 +46,7 @@ class SpectrumOverlay:
   def text(x,y,value,font=None,right=False):draw.text((x,y),value,font=font or self.small,fill=ink,anchor='rt' if right else 'lt')
   fresh=[]
   for index,role in enumerate(('narrow','wide')):
-   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=130+index*451
+   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=148+index*442
    valid=isinstance(span,(list,tuple)) and len(span)==2 and all(finite(x) for x in span) and span[1]>span[0] and isinstance(values,list) and bool(values)
    timestamp=row.get('timestamp');age=max(0,now-timestamp) if finite(timestamp) else None
    current=valid and age is not None and age<5;fresh.append(current)

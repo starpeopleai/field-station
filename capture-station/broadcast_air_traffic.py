@@ -33,7 +33,7 @@ class AircraftOverlay:
   return (d.get('aircraft',[]) if valid else []),age,valid
  def render(self,ink,now=None):
   now=time.time() if now is None else now;reports,age,valid=self.reports(now)
-  canvas=Image.new('RGBA',(460,1120));draw=ImageDraw.Draw(canvas);cx,cy,r=230,304,229
+  canvas=Image.new('RGBA',(460,1120));draw=ImageDraw.Draw(canvas);cx,cy,r=230,318,214
   draw.text((0,0),'Air traffic',font=self.font,fill=ink,anchor='lt')
   azimuth=self.config.get('camera_azimuth_deg')
   oriented=isinstance(azimuth,(int,float)) and not isinstance(azimuth,bool) and math.isfinite(azimuth) and 0<=azimuth<360
@@ -47,7 +47,7 @@ class AircraftOverlay:
    rr=r*fraction;draw.ellipse((cx-rr,cy-rr,cx+rr,cy+rr),outline=faint,width=2)
   draw.line((cx-r,cy,cx+r,cy),fill=faint,width=1);draw.line((cx,cy-r,cx,cy+r),fill=faint,width=1)
   for label,degrees in [('N',0),('E',90),('S',180),('W',270)]:
-   angle=math.radians(degrees)-heading;draw.text((cx+math.sin(angle)*207,cy-math.cos(angle)*207),label,font=self.small,fill=ink,anchor='mm')
+   angle=math.radians(degrees)-heading;draw.text((cx+math.sin(angle)*193,cy-math.cos(angle)*193),label,font=self.small,fill=ink,anchor='mm')
   draw.ellipse((cx-3,cy-3,cx+3,cy+3),fill=ink)
   if oriented:
    angle=0
