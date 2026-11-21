@@ -34,28 +34,28 @@ class SpectrumOverlay:
   def text(x,y,value,font=None,right=False):draw.text((x,y),value,font=font or self.small,fill=ink,anchor='rt' if right else 'lt')
   fresh=[]
   for index,role in enumerate(('narrow','wide')):
-   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=100+index*466
+   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=130+index*451
    valid=isinstance(span,(list,tuple)) and len(span)==2 and all(finite(x) for x in span) and span[1]>span[0] and isinstance(values,list) and bool(values)
    timestamp=row.get('timestamp');age=max(0,now-timestamp) if finite(timestamp) else None
    current=valid and age is not None and age<5;fresh.append(current)
    if not valid:
     text(0,top+55,('Narrow band' if index==0 else 'Wide band')+' · waiting for receiver');continue
    text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,'−40 dB',right=True)
-   for y in (42,223,404):draw.line((0,top+y,839,top+y),fill=ink,width=2)
+   for y in (42,215,389):draw.line((0,top+y,839,top+y),fill=ink,width=2)
    points=[]
    for x in range(840):
     start=int(x*len(values)/840);end=max(start+1,int((x+1)*len(values)/840));bins=[v for v in values[start:end] if finite(v)]
     if not bins:
      if len(points)>1:draw.line(points,fill=ink,width=2)
      points=[];continue
-    peak=max(bins);points.append((x,top+404-max(0,min(1,(peak+100)/60))*362))
+    peak=max(bins);points.append((x,top+389-max(0,min(1,(peak+100)/60))*347))
    if len(points)>1:draw.line(points,fill=ink,width=2)
-   text(840,top+418,'−100 dB',right=True)
+   text(840,top+403,'−100 dB',right=True)
    if role=='wide' and span[0]<=1590e6<1610e6<=span[1]:
     left=(1590e6-span[0])/(span[1]-span[0])*840;right=(1610e6-span[0])/(span[1]-span[0])*840;center=(left+right)/2;label_x=max(0,min(center+20,580))
-    draw.rectangle((left,top+42,right,top+404),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
+    draw.rectangle((left,top+42,right,top+389),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
     draw.line([(center,top+42),(center,top+32),(label_x-4,top+22)],fill=ink,width=1);text(label_x,top+2,'1590–1610 MHz')
-   if not current:text(0,top+418,('Last reading '+str(int(age))+'s ago' if age is not None else 'No timestamp')+' · reconnecting')
+   if not current:text(0,top+403,('Last reading '+str(int(age))+'s ago' if age is not None else 'No timestamp')+' · reconnecting')
   text(0,0,'RF spectrum',self.font)
   text(0,50,'Both receivers live' if all(fresh) else 'One receiver reconnecting' if any(fresh) else 'Waiting for receivers')
   return image.resize((WIDTH,HEIGHT),Image.Resampling.LANCZOS)
