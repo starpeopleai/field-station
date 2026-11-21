@@ -107,7 +107,7 @@ class AircraftOverlay:
   sd.ellipse((x0-3,y0-3,x0+3,y0+3),fill=ink)
   note='Awaiting fresh aircraft data' if not valid else 'Station elevation unavailable' if self.station_altitude_ft is None else None
   if note:sd.text((220,100),note,font=self.small,fill=ink,anchor='mm')
-  draw.text((0,1090),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,1090),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
+  draw.text((0,1090),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((230,96),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='mb')
   if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,1114),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
   row=Image.new('RGBA',(976,566))
   row.alpha_composite(canvas.crop((0,0,460,546)),(0,0))
