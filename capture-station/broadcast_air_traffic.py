@@ -86,7 +86,7 @@ class AircraftOverlay:
   pitch=fov['elevation_deg']
   detail=f'{pitch:g}° ↑ · {fov["vertical_deg"]:.1f}° FoV' if pitch is not None else 'Set camera elevation'
   draw.text((0,582),detail,font=self.small,fill=ink,anchor='lt')
-  side=Image.new('RGBA',(460,480));sd=ImageDraw.Draw(side);x0,y0,w,top=0,440,459,74;scale=w/radius;y_scale=(y0-top)/40000;aspect=y_scale*6076.11549/scale
+  side=Image.new('RGBA',(460,540));sd=ImageDraw.Draw(side);x0,y0,w,top=0,502,459,74;scale=w/radius;y_scale=(y0-top)/40000;aspect=y_scale*6076.11549/scale
   # Cone is drawn on a clipped layer so steep elevation never covers headings.
   cone=Image.new('RGBA',(w,y0-top));cd=ImageDraw.Draw(cone)
   if pitch is not None:
@@ -98,7 +98,7 @@ class AircraftOverlay:
   for frac in (.5,1):
    y=y0-(y0-top)*frac;sd.line((x0,y,x0+w,y),fill=ink,width=1);sd.text((x0+4,y-4),f'{round((y0-y)/y_scale/1000)}k ft',font=self.small,fill=ink,anchor='lb')
   sd.line((x0,top,x0,y0,x0+w,y0),fill=ink,width=1)
-  sd.text((x0,y0+8),'0',font=self.small,fill=ink,anchor='lt');sd.text((x0+w,y0+8),f'{round(radius*1.150779448)} mi',font=self.small,fill=ink,anchor='rt')
+  sd.text((x0,y0-8),'0',font=self.small,fill=ink,anchor='lb');sd.text((x0+w,y0-8),f'{round(radius*1.150779448)} mi',font=self.small,fill=ink,anchor='rb')
   for v in side_rows:
    x=x0+v['distance_nm']*scale;y=y0-v['relative_height_ft']*y_scale
    if not top<=y<=y0 or not x0<=x<=x0+w:continue
@@ -107,12 +107,12 @@ class AircraftOverlay:
   sd.ellipse((x0-3,y0-3,x0+3,y0+3),fill=ink)
   note='Awaiting fresh aircraft data' if not valid else 'Station elevation unavailable' if self.station_altitude_ft is None else None
   if note:sd.text((220,100),note,font=self.small,fill=ink,anchor='mm')
-  canvas.alpha_composite(side,(0,584))
   draw.text((0,1090),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,1090),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
   if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,1114),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
   row=Image.new('RGBA',(976,566))
   row.alpha_composite(canvas.crop((0,0,460,546)),(0,0))
-  row.alpha_composite(canvas.crop((0,554,460,1064)),(516,0))
+  row.alpha_composite(canvas.crop((0,554,460,610)),(516,0))
+  row.alpha_composite(side.crop((0,0,460,510)),(516,30))
   row.alpha_composite(canvas.crop((0,1072,460,1094)),(0,544))
   row.alpha_composite(canvas.crop((0,1096,460,1120)),(516,542))
   return row.resize((488,283),Image.Resampling.LANCZOS)

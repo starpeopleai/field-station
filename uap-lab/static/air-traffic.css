@@ -46,3 +46,9 @@
 #liveTelemetry .air-radar-stage{margin-top:0}
 #liveTelemetry>.rf-overlay{grid-template-rows:45.8974px minmax(0,1fr) minmax(0,1fr)}
 @media(max-width:600px){#liveTelemetry>.rf-overlay{grid-template-rows:49.8462px minmax(0,1fr) minmax(0,1fr)}}
+
+/* End the lower RF plot at the radar circle's bottom, above the footnotes. */
+#liveTelemetry>.rf-overlay{grid-template-rows:45.8974px 138.6859px 138.6859px;align-content:start}
+@media(max-width:600px){#liveTelemetry>.rf-overlay{grid-template-rows:49.8462px 99.8538px 99.8538px}}
+
+.air-radar canvas.air-radar-side{grid-row:1 / 4}
