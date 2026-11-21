@@ -33,7 +33,7 @@ class AircraftOverlay:
   return (d.get('aircraft',[]) if valid else []),age,valid
  def render(self,ink,now=None):
   now=time.time() if now is None else now;reports,age,valid=self.reports(now)
-  canvas=Image.new('RGBA',(460,850));draw=ImageDraw.Draw(canvas);cx,cy,r=230,280,229
+  canvas=Image.new('RGBA',(460,874));draw=ImageDraw.Draw(canvas);cx,cy,r=230,304,229
   draw.text((0,0),'Air traffic',font=self.font,fill=ink,anchor='lt')
   azimuth=self.config.get('camera_azimuth_deg')
   oriented=isinstance(azimuth,(int,float)) and not isinstance(azimuth,bool) and math.isfinite(azimuth) and 0<=azimuth<360
@@ -82,10 +82,10 @@ class AircraftOverlay:
   if valid and oriented:
    label=f'{in_view} in Field of View'+(f' · {unknown} unknown' if unknown else '') if self.station_altitude_ft is not None and fov['elevation_deg'] is not None else 'FoV unavailable'
    draw.text((460,28),label,font=self.small,fill=ink,anchor='rt')
-  draw.text((0,530),'Side view',font=self.font,fill=ink,anchor='lt')
+  draw.text((0,554),'Side view',font=self.font,fill=ink,anchor='lt')
   pitch=fov['elevation_deg']
   detail=f'{pitch:g}° ↑ · {fov["vertical_deg"]:.1f}° FoV' if pitch is not None else 'Set camera elevation'
-  draw.text((460,532),detail,font=self.small,fill=ink,anchor='rt')
+  draw.text((460,556),detail,font=self.small,fill=ink,anchor='rt')
   side=Image.new('RGBA',(460,240));sd=ImageDraw.Draw(side);x0,y0,w,top=0,200,459,20;scale=w/radius
   # Cone is drawn on a clipped layer so steep elevation never covers headings.
   cone=Image.new('RGBA',(w,y0-top));cd=ImageDraw.Draw(cone)
@@ -107,9 +107,9 @@ class AircraftOverlay:
   sd.ellipse((x0-3,y0-3,x0+3,y0+3),fill=ink)
   note='Awaiting fresh aircraft data' if not valid else 'Station elevation unavailable' if self.station_altitude_ft is None else None
   if note:sd.text((220,100),note,font=self.small,fill=ink,anchor='mm')
-  canvas.alpha_composite(side,(0,560))
-  draw.text((0,818),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,818),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
-  if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,840),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
-  return canvas.resize((230,425),Image.Resampling.LANCZOS)
+  canvas.alpha_composite(side,(0,584))
+  draw.text((0,842),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,842),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
+  if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,864),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
+  return canvas.resize((230,437),Image.Resampling.LANCZOS)
  def draw(self,canvas,ink):
-  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-260,canvas.height-485))
+  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-260,canvas.height-497))
