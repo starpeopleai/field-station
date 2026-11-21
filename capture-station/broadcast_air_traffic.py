@@ -86,7 +86,7 @@ class AircraftOverlay:
   pitch=fov['elevation_deg']
   detail=f'{pitch:g}° ↑ · {fov["vertical_deg"]:.1f}° FoV' if pitch is not None else 'Set camera elevation'
   draw.text((0,582),detail,font=self.small,fill=ink,anchor='lt')
-  side=Image.new('RGBA',(460,480));sd=ImageDraw.Draw(side);x0,y0,w,top=0,440,459,50;scale=w/radius;y_scale=(y0-top)/40000;aspect=y_scale*6076.11549/scale
+  side=Image.new('RGBA',(460,480));sd=ImageDraw.Draw(side);x0,y0,w,top=0,440,459,74;scale=w/radius;y_scale=(y0-top)/40000;aspect=y_scale*6076.11549/scale
   # Cone is drawn on a clipped layer so steep elevation never covers headings.
   cone=Image.new('RGBA',(w,y0-top));cd=ImageDraw.Draw(cone)
   if pitch is not None:
