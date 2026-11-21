@@ -147,6 +147,18 @@ class LibraryTests(QueueTests):
   label_queue.clear_backlog(self.data,cutoff=2)
   self.assertEqual(json.loads((self.data/'review-queue-cleared.json').read_text())['cutoff_epoch'],10)
 
+class PendingClearVisibilityTests(LibraryTests):
+ def test_pending_clear_updates_cards_counts_and_preserves_stars(self):
+  from detection_actions import set_star
+  from review_queue_visibility import mark
+  key=f'{1:032x}';set_star(self.data,dict(id=key,starred=True))
+  listing(self.data,'all')
+  mark(self.data,2.5,'pending')
+  result=listing(self.data,'all',classification='all',review_status='needs_review')
+  self.assertEqual({r['id'] for r in result['items']},{key,f'{3:032x}'})
+  self.assertEqual(result['total'],2);self.assertEqual(result['filter_counts']['classification']['all'],2)
+  self.assertTrue((self.root/'notifications/outbox'/f'{2:032x}'/'event.json').exists())
+
 class PendingResetTests(QueueTests):
  def test_explicit_reset_discards_old_intent_but_accepts_new_review(self):
   (self.data/'review-pending-reset.json').write_text(json.dumps(dict(epoch=100)))

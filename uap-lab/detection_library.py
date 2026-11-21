@@ -164,7 +164,9 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
  rows=current_reviews(list(merged.values()),records)
  omitted=read(data/'omitted-objects.json',{}).get('objects',{})
  rows=[row for row in rows if row['id'] not in omitted]
- rows=[row for row in rows if retirement_visible(row,retired_samples,retired_events) and (row['human_reviewed'] or row.get('created',0)>cleared_before)]
+ from detection_actions import stars,canonical
+ bookmarks=stars(data)
+ rows=[row for row in rows if retirement_visible(row,retired_samples,retired_events) and (row['human_reviewed'] or canonical(row['id']) in bookmarks or row.get('created',0)>cleared_before)]
  # Cached suggestions must not outlive their source directory. Human reviews
  # remain backed by their separately preserved training crops.
  if any(row['kind']=='detection' for row in rows):

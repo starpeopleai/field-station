@@ -104,3 +104,5 @@ body.live-mode .station-header:has(#systemTemperature) #infoToggle{margin-left:0
 .detection-star[aria-pressed="true"]{color:#ffd970}
 
 #stationSettings [hidden]{display:none!important}
+
+#stationSettings .settings-option[for="daytimeDetection"],#stationSettings .settings-option[for="nighttimeDetection"]{margin-bottom:16px}

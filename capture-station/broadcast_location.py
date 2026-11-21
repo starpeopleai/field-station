@@ -3,7 +3,8 @@ import os,sys,time
 from pathlib import Path
 from PIL import ImageDraw,ImageFont
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'uap-lab'))
-from station_location import location_at,display_label
+from station_location import display_label
+from air_traffic import public_region
 
 class LocationOverlay:
     def __init__(self,root=None):
@@ -14,7 +15,7 @@ class LocationOverlay:
     def draw(self,canvas,frame=None,standby=False,ink=None):
         now=time.monotonic()
         if now-self.checked>=10:
-            self.label=display_label(location_at(self.root));self.checked=now
+            self.label=display_label(public_region(self.root));self.checked=now
         if not self.label:return
         draw=ImageDraw.Draw(canvas)
         x=30;y=canvas.height-26

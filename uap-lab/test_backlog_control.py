@@ -39,10 +39,13 @@ class RequestPublicationTests(unittest.TestCase):
  def test_new_request_is_visible_before_child_starts(self):
   import backlog_control as control
   from unittest.mock import patch,Mock
-  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)):
+  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)),patch.object(control,'APP',Path(directory)),patch.object(Path,'is_mount',return_value=True):
+   (Path(directory)/'uap-lab').mkdir();(Path(directory)/'.field-station-volume').write_text('test')
+   control.save(Path(directory)/'environment.json',dict(CAPTURE_VOLUME=directory,CAPTURE_VOLUME_ID='test'))
    control.save(control.RUN/'latest.json',dict(phase='complete',request_id='old',review={'frames_cleared':0}))
    def spawn(*args,**kwargs):
     state=control.status()
+    self.assertTrue((Path(directory)/'uap-lab/review-queue-cleared.json').exists())
     self.assertEqual(state['phase'],'queued');self.assertTrue(state['busy']);self.assertNotEqual(state['request_id'],'old')
     return Mock(pid=123)
    with patch.object(control.subprocess,'Popen',side_effect=spawn):result=control.start()
@@ -50,13 +53,17 @@ class RequestPublicationTests(unittest.TestCase):
  def test_spawn_failure_is_not_left_busy(self):
   import backlog_control as control
   from unittest.mock import patch
-  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)):
+  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)),patch.object(control,'APP',Path(directory)),patch.object(Path,'is_mount',return_value=True):
+   (Path(directory)/'uap-lab').mkdir();(Path(directory)/'.field-station-volume').write_text('test')
+   control.save(Path(directory)/'environment.json',dict(CAPTURE_VOLUME=directory,CAPTURE_VOLUME_ID='test'))
    with patch.object(control.subprocess,'Popen',side_effect=OSError('spawn failed')):
     with self.assertRaises(OSError):control.start()
    self.assertEqual(control.status()['phase'],'error');self.assertFalse(control.status()['busy'])
  def test_abandoned_queued_request_reports_failure(self):
   import backlog_control as control
   from unittest.mock import patch
-  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)):
+  with tempfile.TemporaryDirectory() as directory,patch.object(control,'RUN',Path(directory)),patch.object(control,'APP',Path(directory)),patch.object(Path,'is_mount',return_value=True):
+   (Path(directory)/'uap-lab').mkdir();(Path(directory)/'.field-station-volume').write_text('test')
+   control.save(Path(directory)/'environment.json',dict(CAPTURE_VOLUME=directory,CAPTURE_VOLUME_ID='test'))
    control.save(control.RUN/'latest.json',dict(phase='queued',request_id='new',busy=True,queued_epoch=time.time()-60))
    self.assertEqual(control.status()['phase'],'error')

@@ -35,6 +35,12 @@ def start():
   queued=dict(busy=True,phase='queued',request_id=request,queued_epoch=time.time())
   # Publish before spawning: readers must never see the preceding run as the
   # result of this request while the child is importing and acquiring leases.
+  env=read(APP/'environment.json');root=Path(env['CAPTURE_VOLUME'])
+  if not root.is_mount() or (root/'.field-station-volume').read_text().strip()!=env['CAPTURE_VOLUME_ID']:raise RuntimeError('Station volume identity mismatch')
+  from review_queue_visibility import mark
+  existing=read(RUN/request/'result.json',{})
+  queued['queued_epoch']=existing.get('started_epoch',queued['queued_epoch'])
+  mark(root/'uap-lab',queued['queued_epoch'],request)
   save(RUN/'latest.json',queued)
   try:
    with (RUN/'worker.log').open('a') as log:
@@ -79,7 +85,7 @@ def work(request):
  env=read(APP/'environment.json');root=Path(env['CAPTURE_VOLUME']);audit=RUN/request
  record=read(audit/'result.json',{})
  record.update(request_id=request,pid=os.getpid(),busy=True,phase='clearing')
- record.setdefault('started_epoch',time.time());record.pop('error',None)
+ record.setdefault('started_epoch',read(RUN/'latest.json',{}).get('queued_epoch',time.time()));record.pop('error',None)
  def update():save(audit/'result.json',record);save(RUN/'latest.json',record)
  update();stopped=[];marker=APP/'run/web-maintenance.json';domain='gui/'+str(os.getuid())
  try:

@@ -161,6 +161,8 @@ def _clear_backlog(data,cutoff=None):
  import uuid
  data=Path(data);cutoff=time.time() if cutoff is None else float(cutoff);audit=data/'queue-clear-history'/uuid.uuid4().hex
  audit.mkdir(parents=True)
+ from review_queue_visibility import mark
+ mark(data,cutoff,audit.name)
  def save(path,value):
   temporary=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
   temporary.write_text(json.dumps(value));temporary.replace(path)
