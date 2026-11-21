@@ -29,3 +29,13 @@
 #liveTelemetry .rf-heading{flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:3px}
 
 #liveTelemetry .rf-heading{margin-bottom:8px}
+
+/* Keep controls separate while the spectrum plots fill their own column. */
+#liveTelemetry{width:1084px}
+#liveTelemetry>.rf-overlay{width:528px;display:grid;grid-template-columns:250px 250px;grid-template-rows:auto minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:stretch}
+#liveTelemetry .rf-controls-column{grid-column:1;grid-row:1 / 4;display:flex;flex-direction:column;align-self:start;min-width:0}
+#liveTelemetry .rf-heading{grid-column:2;grid-row:1;align-self:start}
+#liveTelemetry #rfNarrow{grid-column:2;grid-row:2}
+#liveTelemetry #rfWide{grid-column:2;grid-row:3}
+#liveTelemetry .rf-overlay>canvas{height:100%;min-height:0;contain:size}
+@media(max-width:600px){#liveTelemetry>.rf-overlay{width:376px;grid-template-columns:180px 180px;column-gap:16px}}
