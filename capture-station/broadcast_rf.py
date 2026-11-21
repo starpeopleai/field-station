@@ -7,7 +7,7 @@ from PIL import Image,ImageDraw,ImageFont
 WIDTH=230
 HEIGHT=112
 LEFT=1020
-BOTTOM=484
+BOTTOM=499
 OUTPUT_WIDTH=1280
 OUTPUT_HEIGHT=720
 FONT=Path(__file__).resolve().parents[1]/'uap-lab/static/fonts/IBMPlexMono-Regular.woff2'

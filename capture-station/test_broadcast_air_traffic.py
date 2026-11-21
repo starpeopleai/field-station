@@ -40,8 +40,8 @@ class AircraftOverlayTests(unittest.TestCase):
    return original(draw,xy,text,*args,**kwargs)
   self.overlay.config['camera_azimuth_deg']=90
   with patch.object(ImageDraw.ImageDraw,'text',capture):self.overlay.render((255,255,255,255),1010)
-  self.assertAlmostEqual(labels['N'][0],20);self.assertAlmostEqual(labels['N'][1],252)
-  self.assertAlmostEqual(labels['E'][0],230);self.assertAlmostEqual(labels['E'][1],42)
+  self.assertAlmostEqual(labels['N'][0],23);self.assertAlmostEqual(labels['N'][1],280)
+  self.assertAlmostEqual(labels['E'][0],230);self.assertAlmostEqual(labels['E'][1],73)
  def test_aircraft_render_changes_pixels(self):
   before=self.overlay.render((255,255,255,255),1010).tobytes();self.overlay.data['aircraft']=[]
   self.assertNotEqual(before,self.overlay.render((255,255,255,255),1010).tobytes())

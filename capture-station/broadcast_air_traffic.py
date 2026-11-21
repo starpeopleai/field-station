@@ -33,7 +33,7 @@ class AircraftOverlay:
   return (d.get('aircraft',[]) if valid else []),age,valid
  def render(self,ink,now=None):
   now=time.time() if now is None else now;reports,age,valid=self.reports(now)
-  canvas=Image.new('RGBA',(460,820));draw=ImageDraw.Draw(canvas);cx,cy,r=230,252,182
+  canvas=Image.new('RGBA',(460,850));draw=ImageDraw.Draw(canvas);cx,cy,r=230,280,229
   draw.text((0,0),'Air traffic',font=self.font,fill=ink,anchor='lt')
   azimuth=self.config.get('camera_azimuth_deg')
   oriented=isinstance(azimuth,(int,float)) and not isinstance(azimuth,bool) and math.isfinite(azimuth) and 0<=azimuth<360
@@ -47,7 +47,7 @@ class AircraftOverlay:
    rr=r*fraction;draw.ellipse((cx-rr,cy-rr,cx+rr,cy+rr),outline=faint,width=2)
   draw.line((cx-r,cy,cx+r,cy),fill=faint,width=1);draw.line((cx,cy-r,cx,cy+r),fill=faint,width=1)
   for label,degrees in [('N',0),('E',90),('S',180),('W',270)]:
-   angle=math.radians(degrees)-heading;draw.text((cx+math.sin(angle)*210,cy-math.cos(angle)*210),label,font=self.small,fill=ink,anchor='mm')
+   angle=math.radians(degrees)-heading;draw.text((cx+math.sin(angle)*207,cy-math.cos(angle)*207),label,font=self.small,fill=ink,anchor='mm')
   draw.ellipse((cx-3,cy-3,cx+3,cy+3),fill=ink)
   if oriented:
    angle=0
@@ -82,11 +82,11 @@ class AircraftOverlay:
   if valid and oriented:
    label=f'{in_view} in Field of View'+(f' · {unknown} unknown' if unknown else '') if self.station_altitude_ft is not None and fov['elevation_deg'] is not None else 'FoV unavailable'
    draw.text((460,28),label,font=self.small,fill=ink,anchor='rt')
-  draw.text((0,500),'Side view',font=self.font,fill=ink,anchor='lt')
+  draw.text((0,530),'Side view',font=self.font,fill=ink,anchor='lt')
   pitch=fov['elevation_deg']
   detail=f'{pitch:g}° ↑ · {fov["vertical_deg"]:.1f}° FoV' if pitch is not None else 'Set camera elevation'
-  draw.text((460,502),detail,font=self.small,fill=ink,anchor='rt')
-  side=Image.new('RGBA',(460,240));sd=ImageDraw.Draw(side);x0,y0,w,top=0,200,440,20;scale=w/radius
+  draw.text((460,532),detail,font=self.small,fill=ink,anchor='rt')
+  side=Image.new('RGBA',(460,240));sd=ImageDraw.Draw(side);x0,y0,w,top=0,200,459,20;scale=w/radius
   # Cone is drawn on a clipped layer so steep elevation never covers headings.
   cone=Image.new('RGBA',(w,y0-top));cd=ImageDraw.Draw(cone)
   if pitch is not None:
@@ -107,9 +107,9 @@ class AircraftOverlay:
   sd.ellipse((x0-3,y0-3,x0+3,y0+3),fill=ink)
   note='Awaiting fresh aircraft data' if not valid else 'Station elevation unavailable' if self.station_altitude_ft is None else None
   if note:sd.text((220,100),note,font=self.small,fill=ink,anchor='mm')
-  canvas.alpha_composite(side,(0,530))
-  draw.text((0,788),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,788),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
-  if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,810),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
-  return canvas.resize((230,410),Image.Resampling.LANCZOS)
+  canvas.alpha_composite(side,(0,560))
+  draw.text((0,818),'ADSB.lol · ODbL',font=self.small,fill=ink,anchor='lb');draw.text((460,818),f'{round(radius*1.150779448)} mi radius',font=self.small,fill=ink,anchor='rb')
+  if self.terrain_source=='Copernicus / Open-Meteo':draw.text((0,840),'Terrain: Copernicus / Open-Meteo',font=self.small,fill=ink,anchor='lb')
+  return canvas.resize((230,425),Image.Resampling.LANCZOS)
  def draw(self,canvas,ink):
-  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-260,canvas.height-470))
+  self.read();canvas.alpha_composite(self.render(ink),(canvas.width-260,canvas.height-485))

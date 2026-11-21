@@ -79,7 +79,7 @@
    result.inFov=forward>0&&Math.abs(right)<=forward*Math.tan(radians(fov.horizontal_deg/2))&&Math.abs(up)<=forward*Math.tan(radians(fov.vertical_deg/2));return result;
   }
   function drawSide(fov,rows,range,color,fresh){
-   const c=sideCtx,x0=0,y0=250,w=500,top=50,scale=w/range;sidePoints=[];c.clearRect(0,0,520,300);c.strokeStyle=c.fillStyle=color;c.lineWidth=1.5;c.font=(canvas.clientWidth<180?'28':'20')+'px "IBM Plex Mono",monospace';c.textAlign='left';c.fillText('Side view',0,23);c.textAlign='right';c.font=(canvas.clientWidth<180?'24':'18')+'px "IBM Plex Mono",monospace';c.fillText(Number.isFinite(fov?.elevation_deg)?fov.elevation_deg+'° ↑ · '+fov.vertical_deg.toFixed(1)+'° FoV':'Set camera elevation',520,23);
+   const c=sideCtx,x0=0,y0=250,w=519,top=50,scale=w/range;sidePoints=[];c.clearRect(0,0,520,300);c.strokeStyle=c.fillStyle=color;c.lineWidth=1.5;c.font=(canvas.clientWidth<180?'28':'20')+'px "IBM Plex Mono",monospace';c.textAlign='left';c.fillText('Side view',0,23);c.textAlign='right';c.font=(canvas.clientWidth<180?'24':'18')+'px "IBM Plex Mono",monospace';c.fillText(Number.isFinite(fov?.elevation_deg)?fov.elevation_deg+'° ↑ · '+fov.vertical_deg.toFixed(1)+'° FoV':'Set camera elevation',520,23);
    c.globalAlpha=1;for(const fraction of [.5,1]){const y=y0-(y0-top)*fraction;c.beginPath();c.moveTo(x0,y);c.lineTo(x0+w,y);c.stroke();c.textAlign='left';c.font=(canvas.clientWidth<180?'24':'16')+'px "IBM Plex Mono",monospace';c.fillText(Math.round((y0-y)/scale*6076.11549/1000)+'k ft',x0+4,y-5);}c.globalAlpha=1;
    c.beginPath();c.moveTo(x0,top);c.lineTo(x0,y0);c.lineTo(x0+w,y0);c.stroke();c.textAlign='left';c.fillText('0',x0,y0+24);c.textAlign='right';c.fillText(Math.round(range*1.150779448)+' mi',x0+w,y0+24);
    if(Number.isFinite(fov?.elevation_deg)){const pitch=radians(fov.elevation_deg),half=radians(fov.vertical_deg/2);c.save();c.beginPath();c.rect(x0,top,w,y0-top);c.clip();c.beginPath();c.moveTo(x0,y0);for(const angle of [pitch-half,pitch+half])c.lineTo(x0+Math.cos(angle)*5000,y0-Math.sin(angle)*5000);c.closePath();c.globalAlpha=.12;c.fill();c.globalAlpha=.7;c.stroke();c.setLineDash([5,5]);c.beginPath();c.moveTo(x0,y0);c.lineTo(x0+Math.cos(pitch)*5000,y0-Math.sin(pitch)*5000);c.stroke();c.restore();}
@@ -94,7 +94,7 @@
    fovCount.hidden=true;cameraInfo.hidden=true;
    const fov=previewOptics||latest?.camera_fov;
    const heading=Number.isFinite(latest?.camera_azimuth_deg)?radians(latest.camera_azimuth_deg):0;
-   const color=getComputedStyle(panel).color,cx=260,cy=260,r=218;ctx.clearRect(0,0,520,520);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.5;ctx.font=(canvas.clientWidth<180?'28':'19')+'px "IBM Plex Mono", monospace';ctx.textAlign='center';points=[];
+   const color=getComputedStyle(panel).color,cx=260,cy=260,r=259;ctx.clearRect(0,0,520,520);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.5;ctx.font=(canvas.clientWidth<180?'28':'19')+'px "IBM Plex Mono", monospace';ctx.textAlign='center';points=[];
    if(Number.isFinite(latest?.camera_azimuth_deg)&&Number.isFinite(fov?.azimuth_span_deg)){
     const half=radians(fov.azimuth_span_deg/2),start=-Math.PI/2-half,end=-Math.PI/2+half;
     ctx.save();ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,start,end);ctx.closePath();ctx.globalAlpha=.12;ctx.fill();ctx.globalAlpha=.55;ctx.stroke();ctx.restore();
