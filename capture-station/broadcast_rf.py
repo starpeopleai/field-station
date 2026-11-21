@@ -17,7 +17,19 @@ def finite(value):
 
 class SpectrumOverlay:
  def __init__(self):
-  self.bright=False;self.font=ImageFont.truetype(str(FONT),40);self.small=ImageFont.truetype(str(FONT),32)
+  self.scales={};self.bright=False;self.font=ImageFont.truetype(str(FONT),40);self.small=ImageFont.truetype(str(FONT),32)
+ def display_scale(self,role,values,now,fresh=True):
+  values=[v for v in values if finite(v)]
+  previous=self.scales.get(role)
+  if not values:return previous[:2] if previous else (-100,-40)
+  if previous and not fresh:return previous[:2]
+  minimum,maximum=min(values),max(values);middle=(minimum+maximum)/2;span=max(20,maximum-minimum+6)
+  low,high=middle-span/2,middle+span/2
+  if previous:
+   alpha=1-math.exp(-max(0,now-previous[2])/8)
+   low=min(low,previous[0]+(low-previous[0])*alpha);high=max(high,previous[1]+(high-previous[1])*alpha)
+  self.scales[role]=(low,high,now)
+  return low,high
  def palette(self,frame):
   if frame is not None:
    w,h=frame.size
@@ -40,7 +52,12 @@ class SpectrumOverlay:
    current=valid and age is not None and age<5;fresh.append(current)
    if not valid:
     text(0,top+55,('Narrow band' if index==0 else 'Wide band')+' · waiting for receiver');continue
-   text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,'−40 dB',right=True)
+   displayed=[]
+   for x in range(840):
+    start=int(x*len(values)/840);end=max(start+1,int((x+1)*len(values)/840));bins=[v for v in values[start:end] if finite(v)]
+    if bins:displayed.append(max(bins))
+   low,high=self.display_scale(role,displayed,now,current)
+   text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,f'{high:.1f} dB',right=True)
    for y in (42,215,389):draw.line((0,top+y,839,top+y),fill=ink,width=2)
    points=[]
    for x in range(840):
@@ -48,9 +65,9 @@ class SpectrumOverlay:
     if not bins:
      if len(points)>1:draw.line(points,fill=ink,width=2)
      points=[];continue
-    peak=max(bins);points.append((x,top+389-max(0,min(1,(peak+100)/60))*347))
+    peak=max(bins);points.append((x,top+389-max(0,min(1,(peak-low)/(high-low)))*347))
    if len(points)>1:draw.line(points,fill=ink,width=2)
-   text(840,top+403,'−100 dB',right=True)
+   text(840,top+403,f'{low:.1f} dB',right=True)
    if role=='wide' and span[0]<=1590e6<1610e6<=span[1]:
     left=(1590e6-span[0])/(span[1]-span[0])*840;right=(1610e6-span[0])/(span[1]-span[0])*840;center=(left+right)/2;label_x=max(0,min(center+20,580))
     draw.rectangle((left,top+42,right,top+389),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
