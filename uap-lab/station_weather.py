@@ -1,6 +1,7 @@
 """Weather at the private radar center. Archive only weather and timestamps."""
 import contextlib
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -18,13 +19,51 @@ def site(config):
     return [config['latitude'], config['longitude']]
 
 
-def collect_due(root):
+def conditions(obs):
+    description = (obs.get('textDescription') or '').strip()
+    if description:
+        return description
+    # Only decode the current observation. Remarks and trends can mention past or forecast rain.
+    report = re.split(r'\b(?:RMK|TEMPO|BECMG|NOSIG)\b', obs.get('rawMessage') or '', maxsplit=1)[0]
+    tokens = report.rstrip('= ').split()
+    weather = []
+    for token in tokens:
+        match = re.fullmatch(r'([+-]?)(?:VC)?(MI|PR|BC|DR|BL|SH|TS|FZ)?((?:(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY)){0,3})', token)
+        if not match:
+            continue
+        intensity, descriptor, phenomena = match.groups()
+        codes = set(re.findall('..', phenomena))
+        if descriptor == 'TS':
+            return 'Thunderstorm'
+        for code, label in [('SN','snow'),('SG','snow grains'),('PL','ice pellets'),('IC','ice crystals'),
+                            ('GR','hail'),('GS','small hail'),('RA','rain'),('DZ','drizzle'),
+                            ('FG','fog'),('BR','mist'),('HZ','haze'),('FU','smoke')]:
+            if code in codes:
+                prefix = {'-':'light ', '+':'heavy '}.get(intensity, '')
+                if descriptor == 'FZ':
+                    prefix += 'freezing '
+                weather.append((prefix + label).capitalize())
+                break
+    if weather:
+        return ', '.join(weather)
+    layers = [layer.get('amount') for layer in obs.get('cloudLayers') or [] if isinstance(layer, dict)]
+    for token in tokens:
+        match = re.fullmatch(r'(VV|OVC|BKN|SCT|FEW)(?:[0-9]{3}|///)(?:CB|TCU)?', token)
+        layers.append(match[1] if match else token)
+    for code, label in [('OVC','Overcast'),('BKN','Mostly cloudy'),('SCT','Partly cloudy'),
+                        ('FEW','Few clouds'),('CLR','Clear'),('SKC','Clear')]:
+        if code in layers:
+            return label
+    return ''
+
+
+def collect_due(root, *, force=False):
     config = traffic.settings(root)
     directory = traffic.base(root)
     status = directory / 'weather-attempt.json'
     now = time.time()
     previous = traffic.read(status, {})
-    if previous.get('site') == site(config) and previous.get('next', 0) > now:
+    if not force and previous.get('site') == site(config) and previous.get('next', 0) > now:
         return
     traffic.atomic(status, {'site': site(config), 'next': now + 120})
     stations = previous.get('stations') if previous.get('site') == site(config) else None
@@ -48,7 +87,7 @@ def collect_due(root):
                 if traffic.number(measure.get('value')) and measure.get('unitCode','').split(':')[-1] == unit:
                     values[key] = round(measure['value']*factor+offset,2)
             if values and (sample is None or len(values)>len(sample['values'])):
-                sample = dict(observed_epoch=stamp, station=station, conditions=obs.get('textDescription',''),values=values)
+                sample = dict(observed_epoch=stamp, station=station, conditions=conditions(obs),values=values)
             if len(values)==3:
                 break
         except (OSError,ValueError,KeyError):
