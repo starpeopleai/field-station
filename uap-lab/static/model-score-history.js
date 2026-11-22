@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
- const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only'};
+ const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only',rotation:'Human-curated (rotation)'};
  const ns='http://www.w3.org/2000/svg';let last=[],signature='';
  const svg=(tag,attrs,text)=>{const el=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;return el};
  function render(points){

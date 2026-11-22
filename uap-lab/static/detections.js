@@ -58,7 +58,7 @@
  }
  function modelResults(row){
   const models=el('div');models.className='object-model-results';models.setAttribute('aria-label','Current model classifications');
-  for(const [lane,name] of [['human','Stable'],['experimental','Experimental'],['hybrid','Hybrid'],['machine','Machine-only']]){const result=row.model_classifications?.find(r=>r.lane===lane);const line=el('div');line.append(el('span',name),el('span',result?.state==='ready'?pretty(result.label):result?.state==='unavailable'?'Unavailable':'Pending'));line.title=result?.state==='ready'?`${result.version?.slice(0,12)} · anomaly score ${(result.anomaly_score*100).toFixed(1)}% · ${result.scope==='review_box'?'whole review box':result.scope==='detection_context'?'original detection and night context':'annotated crop'}`:'Waiting for HQ model scoring';models.append(line);}
+  for(const [lane,name] of [['human','Stable'],['experimental','Experimental'],['hybrid','Hybrid'],['machine','Machine-only'],['rotation','Rotation']]){const result=row.model_classifications?.find(r=>r.lane===lane);const line=el('div');line.append(el('span',name),el('span',result?.state==='ready'?pretty(result.label):result?.state==='unavailable'?'Unavailable':'Pending'));line.title=result?.state==='ready'?`${result.version?.slice(0,12)} · anomaly score ${(result.anomaly_score*100).toFixed(1)}% · ${result.scope==='review_box'?'whole review box':result.scope==='detection_context'?'original detection and night context':'annotated crop'}`:'Waiting for HQ model scoring';models.append(line);}
   return models;
  }
  function card(row){

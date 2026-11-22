@@ -1,7 +1,7 @@
 'use strict';
 (()=>{
  if(location.hash==='#dashboard'){location.replace('/metrics#trainingModelHistory');return}
- const $=id=>document.getElementById(id),lanes=['detection','human','experimental','hybrid','machine'];let catalog=null,selected='detection',loading=false,dirty=false,saving=false,detectionDirty=false,token=null;
+ const $=id=>document.getElementById(id),lanes=['detection','human','experimental','hybrid','machine','rotation'];let catalog=null,selected='detection',loading=false,dirty=false,saving=false,detectionDirty=false,token=null;
  const readOnly=window.FIELD_PUBLIC_READ_ONLY===true,format=n=>typeof n==='number'?n.toLocaleString(undefined,{maximumFractionDigits:6}):'—';
  const text=(tag,value,cls)=>{const el=document.createElement(tag);el.textContent=value;if(cls)el.className=cls;return el};
  function notify(message,error=false){window.stationNotifications?.set('modelSettings',message,error)}

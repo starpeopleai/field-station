@@ -2,7 +2,7 @@
 import argparse,copy,fcntl,json,math,os,re,time,uuid
 from pathlib import Path
 
-LANES={'human':'Human-curated (stable)','experimental':'Human-curated (experimental)','hybrid':'Hybrid','machine':'Machine-only'}
+LANES={'human':'Human-curated (stable)','experimental':'Human-curated (experimental)','hybrid':'Hybrid','machine':'Machine-only','rotation':'Human-curated (rotation)'}
 FIELDS={'anomaly_threshold','minimum_native_size','night_confirmation','minimum_context_score'}
 _CACHE={}
 AUTOMATIC={'hybrid','machine'}
