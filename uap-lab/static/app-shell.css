@@ -48,7 +48,7 @@ body.has-station-header.live-mode{padding:0!important}.has-station-header.live-m
 :is(.category-tabs,#queueFilters,[role="tablist"]){gap:16px!important}
 
 .station-header .station-menu-button{position:relative;margin-inline-end:4px}
-.station-detection-dot{position:absolute;top:12px;right:10px;width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px #101820;pointer-events:none}
+.station-detection-dot{position:absolute;top:12px;right:10px;width:8px;height:8px;border-radius:50%;background:currentColor;pointer-events:none}
 .station-detection-dot[hidden]{display:none}
 
 #stationLivePip{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--bulk-review-height,0px));z-index:950;display:block;width:clamp(180px,24vw,320px);aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line,#526975);border-radius:8px;background:#080d11;color:#fff;text-decoration:none;box-shadow:0 4px 20px #0005}
@@ -68,7 +68,7 @@ body.has-station-header.live-mode{padding:0!important}.has-station-header.live-m
 @media(max-width:600px){.station-header:has(#clearBacklog){gap:6px}.station-header:has(#clearBacklog) .station-train-button{font-size:10px;padding:7px 6px}}
 @media(max-width:380px){.station-header:has(#clearBacklog) .station-train-button{font-size:10px;padding:7px 4px}}
 
-body:has(#objectViews) .station-header.app-controls{padding-left:max(10px,calc((100vw - 1500px)/2 + 10px))}
+body.has-station-header main:has(#objectViews){max-width:none;width:100%;margin-inline:0;padding-inline:0}
 #stationLivePip .pip-badge,#liveStatus,.object-label{border-radius:999px}
 .object-label{top:8px!important;left:8px!important}
 
