@@ -176,8 +176,8 @@
  weather.style.cssText='display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:1.3;font-variant-numeric:tabular-nums';
  const svgNS='http://www.w3.org/2000/svg';
  const icon=document.createElementNS(svgNS,'svg');
- for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:20,height:20,fill:'none',stroke:'currentColor','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round',role:'img'}))icon.setAttribute(key,value);
- icon.style.flex='none';
+ for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round',role:'img'}))icon.setAttribute(key,value);
+ icon.style.cssText='display:block;flex:none;width:1.1em;height:1.1em';
  const path=document.createElementNS(svgNS,'path');
  icon.append(path);
  const readings=document.createElement('span');
