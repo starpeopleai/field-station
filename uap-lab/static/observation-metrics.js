@@ -18,7 +18,7 @@ function modelComposite(metrics){
 
  function falsePositives(light){
   const period=$('metrics-period').value,showOriginal=$('reviewed-model').value==='original',entries=snapshot.reviewed_models?.series||[];
-  const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only'};
+  const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only',rotation:'Human-curated (rotation)'};
   const series=Object.entries(names).map(([lane,name])=>{const history=snapshot.reviewed_models?.timelines?.find(e=>e.lane===lane),entry=history||entries.find(e=>e.lane===lane&&e.active);return {lane,name,version:history?null:entry?.version,revision:entry?.settings_revision,values:entry?.periods?.[period]?.[light]}});
   if(showOriginal)series.push({lane:'original',name:'Original capture',values:snapshot.false_positive_lanes?.[light]?.[period]});
   const chart=$(light+'-false-positive-chart'),width=Math.max(280,chart.clientWidth||960),left=44,right=width-12,top=16,bottom=176;
@@ -41,7 +41,7 @@ function modelComposite(metrics){
   for(const s of series){const button=document.createElement('button');button.type='button';button.className='fp-legend-item';button.dataset.lane=s.lane;const swatch=svg('svg',{viewBox:'0 0 26 8',width:26,height:8,'aria-hidden':'true'});swatch.append(svg('path',{d:'M1 4H25',class:'fp-line '+s.lane}));const label=document.createElement('span');label.textContent=s.name+' '+percent(s.values?.rate);button.append(swatch,label);button.title=(s.version?s.version.slice(0,12)+' · v'+s.revision+' · ':'')+'Selected-period false positives / reviewed non-anomalous objects'+(s.values?`: ${format.format(s.values.fp)} / ${format.format(s.values.negative_reviews)}`:'; no reviewed data');
    const highlight=()=>chart.querySelectorAll('[data-lane]').forEach(n=>{n.style.opacity=n.dataset.lane===s.lane?'1':'.2';n.classList.toggle('highlighted',n.dataset.lane===s.lane)});button.onpointerenter=highlight;button.onpointerleave=clear;button.onfocus=highlight;button.onblur=clear;button.onclick=()=>{highlight();const latest=days.findLastIndex(d=>Number.isFinite(s.points.get(d)?.rate));if(latest>=0){const r=button.getBoundingClientRect();details(latest,r.left,r.bottom)}};legend.append(button);
   }
-  chart.replaceChildren();chart.setAttribute('viewBox',`0 0 ${width} 216`);chart.setAttribute('aria-label',`${light} false-positive rates for Stable, Experimental, Hybrid and Machine-only${showOriginal?', with original capture baseline':''}`);
+  chart.replaceChildren();chart.setAttribute('viewBox',`0 0 ${width} 216`);chart.setAttribute('aria-label',`${light} false-positive rates for Stable, Experimental, Hybrid, Machine-only and Rotation${showOriginal?', with original capture baseline':''}`);
   for(let tick=0;tick<=4;tick++){const y=bottom-tick*(bottom-top)/4;chart.append(svg('line',{x1:left,y1:y,x2:right,y2:y}),svg('text',{x:left-8,y:y+4,'text-anchor':'end'},tick*25+'%'))}
   for(const s of series){let path='',connected=false;days.forEach((day,i)=>{const p=s.points.get(day);if(!Number.isFinite(p?.rate)){connected=false;return}const y=bottom-p.rate*(bottom-top);path+=`${connected?' L':' M'}${x(i)},${y}`;connected=true;
     const point=svg('circle',{cx:x(i),cy:y,r:2.5,'data-lane':s.lane,tabindex:0,'aria-label':`${day}: ${s.name} ${percent(p.rate)}, ${p.fp} false positives / ${p.negative_reviews} reviewed non-anomalous objects`});point.onfocus=()=>{const r=point.getBoundingClientRect();details(i,r.left,r.top)};point.onblur=clear;chart.append(point);
@@ -59,7 +59,7 @@ function modelComposite(metrics){
  function modelLeaderboard(points,measure){
   const active=snapshot?.model_activation||{},request=active.request||{},busy=['queued','preparing','activating','monitoring'].includes(request.phase);
   if(busy)window.stationNotifications?.set('modelActivation',request.error||'Activating the selected model…');else if(request.phase==='failed')window.stationNotifications?.set('modelActivation',request.error||'Model activation needs attention.',true);else if(request.phase==='live')window.stationNotifications?.clear?.('modelActivation');
-  const latest=points.at(-1),names={human:'Human-curated (stable)',experimental:'Human-curated (experimental)',hybrid:'Hybrid',machine:'Machine-only'},labels={accuracy:'accuracy',false_positive_rate:'false-positive rate',recall:'anomalous recall'};
+  const latest=points.at(-1),names={human:'Human-curated (stable)',experimental:'Human-curated (experimental)',hybrid:'Hybrid',machine:'Machine-only',rotation:'Human-curated (rotation)'},labels={accuracy:'accuracy',false_positive_rate:'false-positive rate',recall:'anomalous recall'};
   const rows=Object.keys(names).map(lane=>{const model=active.models?.find(m=>m.lane===lane),version=latest?.[lane+'_version']||model?.version,revision=latest?.settings_revisions?.[lane]??model?.revision,entry=snapshot?.reviewed_models?.series?.find(e=>e.lane===lane&&e.version===version&&e.settings_revision===revision);return {lane,version,revision,composite:modelComposite(latest?.lanes?.[lane]),score:modelComposite(latest?.lanes?.[lane])?.score,metrics:latest?.lanes?.[lane],reviewed:entry?.summaries?.[$('metrics-period').value]}});
   const support=rows.find(r=>r.composite)?.composite;for(const row of rows)if(row.composite&&(row.composite.positive!==support.positive||row.composite.negative!==support.negative))row.score=null;
   rows.sort((a,b)=>Number.isFinite(a.score)&&Number.isFinite(b.score)?b.score-a.score:Number.isFinite(a.score)?-1:Number.isFinite(b.score)?1:0);
@@ -88,7 +88,7 @@ function modelComposite(metrics){
   for(let t=0;t<=4;t++){const y=bottom-t*(bottom-top)/4;chart.append(svg('line',{x1:left,y1:y,x2:right,y2:y}),svg('text',{x:left-8,y:y+4,'text-anchor':'end'},t*25+'%'));}
   const dates=points.map(p=>p.epoch?new Date(p.epoch*1000).toISOString():p.day),first=Date.parse(dates[0]),last=Date.parse(dates.at(-1)),x=day=>first===last?(left+right)/2:left+(Date.parse(day)-first)/(last-first)*(right-left),stamp=p=>p.epoch?new Date(p.epoch*1000).toISOString():p.day;
   let tip=$('model-comparison-tooltip');if(!tip){tip=document.createElement('div');tip.id='model-comparison-tooltip';tip.className='model-chart-tooltip';tip.hidden=true;tip.setAttribute('role','status');chart.after(tip);}
-  const names={human:'Human-curated (stable)',experimental:'Human-curated (experimental)',hybrid:'Hybrid',machine:'Machine-only'};
+  const names={human:'Human-curated (stable)',experimental:'Human-curated (experimental)',hybrid:'Hybrid',machine:'Machine-only',rotation:'Human-curated (rotation)'};
   function clearHighlight(){chart.querySelectorAll('[data-lane]').forEach(e=>{e.style.opacity='';e.classList.remove('highlighted')});tip.hidden=true;}
   function highlight(lane,point){if(!point)return;chart.querySelectorAll('[data-lane]').forEach(e=>{e.style.opacity=e.dataset.lane===lane?'1':'.25';e.classList.toggle('highlighted',e.dataset.lane===lane)});const v=point.lanes[lane][measure];tip.textContent=`${names[lane]} · ${(v*100).toFixed(1)}% · ${point.epoch?new Date(point.epoch*1000).toLocaleString():point.day} · ${point.count} images · model ${(point[lane+'_version']||'').slice(0,12)}`;tip.hidden=false;const bounds=chart.getBoundingClientRect(),anchorX=bounds.left+x(stamp(point))/width*bounds.width,anchorY=bounds.top+(bottom-v*(bottom-top))/250*bounds.height;tip.style.left=Math.max(12,Math.min(innerWidth-tip.offsetWidth-12,anchorX+14))+'px';tip.style.top=Math.max(12,Math.min(innerHeight-tip.offsetHeight-12,anchorY-tip.offsetHeight-14))+'px';}
   if(chart.clearHover)window.removeEventListener('scroll',chart.clearHover);
@@ -96,7 +96,7 @@ function modelComposite(metrics){
   clearHighlight();
   chart.onpointerleave=clearHighlight;
   for(const [lane,name]of Object.entries(names)){const legend=document.querySelector('.model-'+lane+'-key')?.parentElement;if(!legend)continue;legend.tabIndex=0;legend.setAttribute('aria-label','Highlight '+name+' model');const latest=points.filter(p=>Number.isFinite(p.lanes?.[lane]?.[measure])).at(-1);legend.onpointerenter=()=>highlight(lane,latest);legend.onpointerleave=clearHighlight;legend.onfocus=()=>highlight(lane,latest);legend.onblur=clearHighlight;legend.onclick=()=>highlight(lane,latest);}
-  for(const lane of ['human','experimental','hybrid','machine']){let path='',previous=null;
+  for(const lane of ['human','experimental','hybrid','machine','rotation']){let path='',previous=null;
    for(const p of points){const v=p.lanes?.[lane]?.[measure];if(!Number.isFinite(v)){previous=null;continue;}const same=previous&&previous.lanes?.[lane]?.[measure]!=null;
     path+=`${same?' L':' M'}${x(stamp(p))},${bottom-v*(bottom-top)}`;
     const label=`${p.day}: ${names[lane]} ${(v*100).toFixed(1)}%, ${p.count} shared evaluation objects; model ${(p[lane+'_version']||'').slice(0,12)}`;

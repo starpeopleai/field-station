@@ -52,6 +52,7 @@ def cycle(cfg):
  except Exception as exc:save(root/'model-inspector/sync-status.json',dict(state='settings_retry',error=str(exc),epoch=time.time()))
  models=[]
  lanes=[('human','Human-curated (stable)','human_root'),('experimental','Human-curated (experimental)','experimental_root'),('hybrid','Hybrid','hybrid_root'),('machine','Machine-only','machine_root')]
+ if cfg.get('rotation_root'):lanes.append(('rotation','Human-curated (rotation)','rotation_root'))
  for lane,label,root_key in lanes:
   model=dict(lane=lane,label=label,available=False,live=lane=='human')
   try:

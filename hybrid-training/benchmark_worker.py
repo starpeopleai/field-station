@@ -27,7 +27,7 @@ def totals(parts):
 
 def experimental_models(config):
  models={}
- for lane,key in [('experimental','experimental_root'),('hybrid','hybrid_root'),('machine','machine_root')]:
+ for lane,key in [('experimental','experimental_root'),('hybrid','hybrid_root'),('machine','machine_root'),('rotation','rotation_root')]:
   if not config.get(key):continue
   state=read(Path(config[key])/'status.json',{})
   if state.get('shadow_folder') and not state.get('shadow_seed_only',True):models[lane]=Path(state['shadow_folder'])
