@@ -256,9 +256,9 @@ class InternetArchive:
         if still_index.get('review_revision')!=decision.get('review_revision') or not still_index.get('frames'):raise ValueError('Reviewed still pairs are not ready')
         evidence.append(folder/'frames/reviewed-index.json')
         for row in still_index['frames']:
-            for kind in ('original','annotated'):
+            for kind in ('original','annotated',*(['motion'] if 'motion' in row else [])):
                 item=row[kind];name=item['file']
-                if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-'+kind+r'\.png',name):raise ValueError('Invalid reviewed still path')
+                if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-'+kind+(r'\.gif' if kind=='motion' else r'\.png'),name):raise ValueError('Invalid reviewed still path')
                 path=folder/'frames'/name
                 if path.is_symlink() or not path.resolve().is_relative_to(folder.resolve()) or hashes(path)['sha256']!=item['sha256']:raise ValueError('Reviewed still checksum mismatch')
                 evidence.append(path)

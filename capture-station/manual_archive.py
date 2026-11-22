@@ -52,7 +52,7 @@ def plan(archive,job,manifest):
   index=load(folder/'frames/reviewed-index.json',{})
   if index.get('review_revision')!=rev:raise ValueError('Reviewed frames are still updating')
   for row in index.get('frames',[]):
-   for kind in ('original','annotated'):
+   for kind in ('original','annotated',*(['motion'] if 'motion' in row else [])):
     entry=row[kind];path=folder/'frames'/entry['file']
     if path.is_symlink() or not path.resolve().is_relative_to((folder/'frames').resolve()):raise ValueError('Unsafe reviewed frame')
     digest=hashes(path)

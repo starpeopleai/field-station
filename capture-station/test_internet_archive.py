@@ -42,8 +42,8 @@ class ArchiveTests(TestCase):
         (self.folder/'frames').mkdir();(self.folder/'frames/frame-000000000.jpg').write_bytes(b'original selected JPEG')
         save(self.folder/'frames/index.json',dict(mode='selected',frames=[dict(file='frame-000000000.jpg',**file_info(self.folder/'frames/frame-000000000.jpg'))]))
         pair={}
-        for kind in ('original','annotated'):
-            name='reviewed-'+'a'*64+'/frame-000000007-'+kind+'.png'
+        for kind in ('original','annotated','motion'):
+            name='reviewed-'+'a'*64+'/frame-000000007-'+kind+('.gif' if kind=='motion' else '.png')
             path=self.folder/'frames'/name;path.parent.mkdir(exist_ok=True);path.write_bytes(kind.encode())
             pair[kind]=dict(file=name,sha256=hashes(path)['sha256'])
         save(self.folder/'frames/reviewed-index.json',dict(review_revision='one',frames=[pair]))
@@ -291,6 +291,7 @@ class ArchiveTests(TestCase):
         self.assertIn('frames/reviewed-index.json',names)
         self.assertEqual(len([n for n in names if n.endswith('-original.png')]),1)
         self.assertEqual(len([n for n in names if n.endswith('-annotated.png')]),1)
+        self.assertEqual(len([n for n in names if n.endswith('-motion.gif')]),1)
         self.assertEqual(len(names),len(self.job['files']))
 
     def test_disabled_cleanup_keeps_offline_originals_after_verified_upload(self):
