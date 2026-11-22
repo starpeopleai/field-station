@@ -171,27 +171,47 @@
  const header=document.querySelector('.station-header');if(!header)return;
  const temperature=document.createElement('span');temperature.id='systemTemperature';temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature';
  temperature.style.cssText='white-space:nowrap;font-size:11px;font-weight:400;font-variant-numeric:tabular-nums';header.insertBefore(temperature,document.getElementById('infoToggle'));
-  function weatherLine(sample) {
-   if (!sample || !Number.isFinite(sample.observed_epoch)) return 'Weather unavailable';
-   const conditions=(sample.conditions||'').toLowerCase();
-   const icon=/thunder/.test(conditions)?'ϟ':/snow|ice|freezing/.test(conditions)?'❄':/rain|drizzle/.test(conditions)?'☂':/fog|mist|haze/.test(conditions)?'≋':/cloud|overcast/.test(conditions)?'☁':/clear|fair|sun/.test(conditions)?'☼':'◌';
-   const reading=(key,unit)=>Number.isFinite(sample[key])?Math.round(sample[key])+unit:'—';
-   return [icon,reading('temperature_2m','°F'),reading('relative_humidity_2m','% RH'),reading('pressure_hpa',' hPa')].join(' · ');
-  }
  const weather=document.createElement('span');
  weather.id='stationWeather';
- weather.textContent='Weather —';
- weather.style.cssText='font-size:11px;line-height:1.3;font-variant-numeric:tabular-nums';
+ weather.style.cssText='display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:1.3;font-variant-numeric:tabular-nums';
+ const svgNS='http://www.w3.org/2000/svg';
+ const icon=document.createElementNS(svgNS,'svg');
+ for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:20,height:20,fill:'none',stroke:'currentColor','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round',role:'img'}))icon.setAttribute(key,value);
+ icon.style.flex='none';
+ const path=document.createElementNS(svgNS,'path');
+ icon.append(path);
+ const readings=document.createElement('span');
+ weather.append(icon,readings);
  temperature.after(weather);
+ const cloud='M6 16a4 4 0 0 1-.3-8 6 6 0 0 1 11.5-.5A4.3 4.3 0 1 1 18 16Z';
+ const sun='M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5';
+ const unknown='M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.5 9a2.5 2.5 0 1 1 4 2c-1.2.9-1.5 1.3-1.5 2.5M12 17h.01';
+ function renderWeather(sample){
+  const available=Number.isFinite(sample?.observed_epoch);
+  const condition=available && sample.conditions || 'Conditions unavailable';
+  const symbols=[
+   [/thunder/i,cloud+'M13 16l-3 4h4l-2 3'],
+   [/snow|ice|freezing|sleet/i,cloud+'M8 19v3m-1.5-1.5h3M16 19v3m-1.5-1.5h3'],
+   [/rain|drizzle|shower/i,cloud+'M8 19l-1 3m6-3-1 3m6-3-1 3'],
+   [/fog|mist|haze|smoke/i,'M4 8h13M7 12h14M3 16h14M8 20h12'],
+   [/partly|few clouds|mostly sunny/i,'M14 11a4 4 0 1 0-6-4M10 1v1M3 4l1 1M17 4l-1 1M19 9h2M5 20a4 4 0 1 1 1-7.9 5 5 0 0 1 9.5.4A3.8 3.8 0 1 1 17 20Z'],
+   [/cloud|overcast/i,cloud],[/clear|fair|sun/i,sun]
+  ];
+  path.setAttribute('d',symbols.find(([pattern])=>pattern.test(condition))?.[1]||unknown);
+  icon.setAttribute('aria-label',condition);
+  const reading=(key,unit)=>Number.isFinite(sample[key])?Math.round(sample[key])+unit:'—';
+  readings.textContent=available?[reading('temperature_2m','°F'),reading('relative_humidity_2m','% RH'),reading('pressure_hpa',' hPa')].join(' · '):'Weather unavailable';
+  weather.title=available?[condition,sample.station,new Date(sample.observed_epoch*1000).toLocaleTimeString(),'National Weather Service'].filter(Boolean).join(' · '):condition;
+ }
+ renderWeather(null);
  async function poll(){
   let delay=15000;
   if(!document.hidden){try{
    const response=await fetch('/api/system-temperature',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error();const value=await response.json();
    temperature.textContent=value.available&&Number.isFinite(value.celsius)?'CPU '+Math.round(value.celsius*9/5+32)+'°F':'CPU —';temperature.title=value.available?'Field Mac CPU temperature':'Field Mac CPU temperature unavailable';
-   weather.textContent=weatherLine(value.weather);
-   weather.title=value.weather?.station ? [value.weather.conditions,value.weather.station,new Date(value.weather.observed_epoch*1000).toLocaleTimeString(), 'National Weather Service'].join(' · ') : 'Weather unavailable';
+   renderWeather(value.weather);
    if(value.sampling&&!value.available)delay=2000;
-  }catch{weather.textContent='Weather unavailable';temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature unavailable';}}
+  }catch{renderWeather(null);temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature unavailable';}}
   setTimeout(poll,delay);
  }
  poll();
