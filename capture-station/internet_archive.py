@@ -187,7 +187,9 @@ class InternetArchive:
         """Archive the finalized session record, excluding raw/scratch video."""
         from air_traffic_archive import bundle as traffic_bundle
         traffic_path=traffic_bundle(self.data.parent,self.folder(job['id']),manifest)
-        traffic_hash=hashes(traffic_path)['sha256']
+        from station_weather import bundle as weather_bundle
+        weather_path=weather_bundle(self.data.parent,self.folder(job['id']),manifest)
+        traffic_hash=hashes(traffic_path)['sha256']+':'+hashes(weather_path)['sha256']
         traffic_changed=job.get('air_traffic_sha256')!=traffic_hash
         from manual_archive import enabled,plan
         if enabled(self,manifest):
@@ -224,7 +226,7 @@ class InternetArchive:
         removed=len(job['files'])!=old_length
         known={e['name'] for e in job['files']}
         for i,entry in enumerate(job['files']):
-            if entry['name'] in ('air-traffic.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4'):
+            if entry['name'] in ('air-traffic.json','weather.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4'):
                 updated=dict(name=entry['name'],**hashes(folder/entry['name']))
                 if updated!=entry:job['files'][i]=updated;changed.append(i)
         for path in sorted(folder.iterdir()):

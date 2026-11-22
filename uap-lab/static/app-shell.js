@@ -171,13 +171,27 @@
  const header=document.querySelector('.station-header');if(!header)return;
  const temperature=document.createElement('span');temperature.id='systemTemperature';temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature';
  temperature.style.cssText='white-space:nowrap;font-size:11px;font-weight:400;font-variant-numeric:tabular-nums';header.insertBefore(temperature,document.getElementById('infoToggle'));
+  function weatherLine(sample) {
+   if (!sample || !Number.isFinite(sample.observed_epoch)) return 'Weather unavailable';
+   const conditions=(sample.conditions||'').toLowerCase();
+   const icon=/thunder/.test(conditions)?'ϟ':/snow|ice|freezing/.test(conditions)?'❄':/rain|drizzle/.test(conditions)?'☂':/fog|mist|haze/.test(conditions)?'≋':/cloud|overcast/.test(conditions)?'☁':/clear|fair|sun/.test(conditions)?'☼':'◌';
+   const reading=(key,unit)=>Number.isFinite(sample[key])?Math.round(sample[key])+unit:'—';
+   return [icon,reading('temperature_2m','°F'),reading('relative_humidity_2m','% RH'),reading('pressure_hpa',' hPa')].join(' · ');
+  }
+ const weather=document.createElement('span');
+ weather.id='stationWeather';
+ weather.textContent='Weather —';
+ weather.style.cssText='font-size:11px;line-height:1.3;font-variant-numeric:tabular-nums';
+ temperature.after(weather);
  async function poll(){
   let delay=15000;
   if(!document.hidden){try{
    const response=await fetch('/api/system-temperature',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error();const value=await response.json();
    temperature.textContent=value.available&&Number.isFinite(value.celsius)?'CPU '+Math.round(value.celsius*9/5+32)+'°F':'CPU —';temperature.title=value.available?'Field Mac CPU temperature':'Field Mac CPU temperature unavailable';
+   weather.textContent=weatherLine(value.weather);
+   weather.title=value.weather?.station ? [value.weather.conditions,value.weather.station,new Date(value.weather.observed_epoch*1000).toLocaleTimeString(), 'National Weather Service'].join(' · ') : 'Weather unavailable';
    if(value.sampling&&!value.available)delay=2000;
-  }catch{temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature unavailable';}}
+  }catch{weather.textContent='Weather unavailable';temperature.textContent='CPU —';temperature.title='Field Mac CPU temperature unavailable';}}
   setTimeout(poll,delay);
  }
  poll();
@@ -222,6 +236,6 @@
 })();
 
 // Aircraft radar and private center settings.
-if(window.FIELD_PUBLIC_READ_ONLY!==true){const script=document.createElement("script");script.src="/air-traffic.js?v=telemetry-row-36";document.head.append(script);}
+if(window.FIELD_PUBLIC_READ_ONLY!==true){const script=document.createElement("script");script.src="/air-traffic.js?v=radar-weather-1";document.head.append(script);}
 
 if(window.FIELD_PUBLIC_READ_ONLY!==true&&document.querySelector(".observation-metrics")){const script=document.createElement("script");script.src="/drive-storage.js?v=1";document.head.append(script);}

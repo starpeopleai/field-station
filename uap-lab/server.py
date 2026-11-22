@@ -123,7 +123,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(status(lab.DATA.parent));return
             if p=='/api/system-temperature':
                 from system_temperature import status
-                self.json(status());return
+                from station_weather import live as weather
+                from air_traffic import settings as radar_settings
+                import time as weather_clock
+                root=lab.DATA.parent
+                self.json(dict(status(),weather=weather(root,radar_settings(root),weather_clock.time())));return
             if p in ('/api/air-traffic','/api/air-traffic/settings','/api/air-traffic/detection'):
                 if self.headers.get('X-Lab-Token')!=TOKEN:self.json(dict(error='Private station access required'),403);return
                 import air_traffic

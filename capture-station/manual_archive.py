@@ -25,7 +25,7 @@ def plan(archive,job,manifest):
  approval=load(folder/'manual-archive-approval.json',{});decision=load(folder/'archive-decision.json',{})
  anomalous=approval.get('classification')=='anomalous' or decision.get('confirmed_anomalous') is True
  job.update(manual_scope=True,manual_revision=rev,manual_priority_epoch=max(manifest.get('stopped_epoch',0),decision.get('reviewed_epoch',0)),custom_tags=normalize([*tags,'manual-recording',*(['anomalous'] if anomalous else [])]),ce5_playback=overlap(archive.data.parent,manifest))
- names=['video.mp4','air-traffic.json','rf.jsonl','capture.log','capture-progress.txt','buffer-state.json','motion-events.json','rf-trigger-events.json','manual-archive-approval.json']
+ names=['video.mp4','air-traffic.json','weather.json','rf.jsonl','capture.log','capture-progress.txt','buffer-state.json','motion-events.json','rf-trigger-events.json','manual-archive-approval.json']
  if rev!='baseline':names+=['video-annotated.mp4','review-annotations.json','archive-decision.json','review-trim.json','video-trim.json','frames/reviewed-index.json']
  files=[];stats={}
  old={e['name']:e for e in previous};old_stats=job.get('source_signatures',{})

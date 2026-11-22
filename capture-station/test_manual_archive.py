@@ -20,7 +20,7 @@ class ManualArchiveTests(unittest.TestCase):
   self.assertTrue(self.job['manual_scope']);self.assertTrue(self.a.current_review(self.job))
   self.assertNotIn('anomalous',self.job['custom_tags']);self.assertIn('manual-recording',self.job['custom_tags'])
   self.assertFalse((self.folder/'archive-decision.json').exists())
-  self.assertEqual({x['name'] for x in self.job['files']},{'video.mp4','air-traffic.json','rf.jsonl','session.json','archive-index.json'})
+  self.assertEqual({x['name'] for x in self.job['files']},{'video.mp4','air-traffic.json','weather.json','rf.jsonl','session.json','archive-index.json'})
   with patch('internet_archive.PART_SIZE',4):
    for _ in range(30):
     if self.job['state']=='verifying':break

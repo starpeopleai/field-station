@@ -170,6 +170,8 @@ def live(root, now=None):
     config=settings(root)
     if result.get('center_id')!=center_id(config):return dict(status='waiting',aircraft=[],center=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude']),radius_nm=config['radius_nm'],landmarks=config.get('landmarks',[]),camera_azimuth_deg=config.get('camera_azimuth_deg'),camera_elevation_deg=config.get('camera_elevation_deg'),camera_fov=field_of_view(config),station_elevation=station_elevation(root,config))
     result['center']=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude'])
+    from station_weather import live as current_weather
+    result['weather']=current_weather(root,config,now)
     result['landmarks']=config.get('landmarks',[])
     result['camera_azimuth_deg']=config.get('camera_azimuth_deg')
     result['camera_elevation_deg']=config.get('camera_elevation_deg')
@@ -284,6 +286,8 @@ def collect_auxiliary(root):
         collect_due(root)
         refresh_region(root)
         refresh_elevation(root)
+        from station_weather import collect_due as collect_weather
+        collect_weather(root)
     except Exception:
         pass
 
