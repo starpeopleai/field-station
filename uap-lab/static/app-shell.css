@@ -69,6 +69,7 @@ body.has-station-header.live-mode{padding:0!important}.has-station-header.live-m
 @media(max-width:380px){.station-header:has(#clearBacklog) .station-train-button{font-size:10px;padding:7px 4px}}
 
 body.has-station-header main:has(#objectViews){max-width:none;width:100%;margin-inline:0;padding-inline:0}
+body.has-station-header #objectViews.review-sidebar{padding-inline-start:clamp(12px,1.5vw,24px)}
 #stationLivePip .pip-badge,#liveStatus,.object-label{border-radius:999px}
 .object-label{top:8px!important;left:8px!important}
 
