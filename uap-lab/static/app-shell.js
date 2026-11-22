@@ -177,7 +177,7 @@
  const svgNS='http://www.w3.org/2000/svg';
  const icon=document.createElementNS(svgNS,'svg');
  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round',role:'img'}))icon.setAttribute(key,value);
- icon.style.cssText='display:block;flex:none;width:1.1em;height:1.1em';
+ icon.style.cssText='display:block;flex:none;width:1.6em;height:1.6em';
  const path=document.createElementNS(svgNS,'path');
  icon.append(path);
  const readings=document.createElement('span');
@@ -197,7 +197,12 @@
    [/partly|few clouds|mostly sunny/i,'M14 11a4 4 0 1 0-6-4M10 1v1M3 4l1 1M17 4l-1 1M19 9h2M5 20a4 4 0 1 1 1-7.9 5 5 0 0 1 9.5.4A3.8 3.8 0 1 1 17 20Z'],
    [/cloud|overcast/i,cloud],[/clear|fair|sun/i,sun]
   ];
-  path.setAttribute('d',symbols.find(([pattern])=>pattern.test(condition))?.[1]||unknown);
+  const drawing=symbols.find(([pattern])=>pattern.test(condition))?.[1]||unknown;
+  if(path.getAttribute('d')!==drawing){
+   path.setAttribute('d',drawing);
+   const bounds=path.getBBox();
+   icon.setAttribute('viewBox', [bounds.x+bounds.width/2-12,bounds.y+bounds.height/2-12,24,24].join(' '));
+  }
   icon.setAttribute('aria-label',condition);
   const reading=(key,unit)=>Number.isFinite(sample[key])?Math.round(sample[key])+unit:'—';
   readings.textContent=available?[reading('temperature_2m','°F'),reading('relative_humidity_2m','% RH'),reading('pressure_hpa',' hPa')].join(' · '):'Weather unavailable';
