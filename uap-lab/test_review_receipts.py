@@ -32,6 +32,19 @@ class ReceiptTests(unittest.TestCase):
         self.path.write_text(json.dumps(dict(self.receipt,human_confirmed=False)));self.assertIsNone(confirmed(self.data,self.item))
     def test_reset_cutoff_not_bypassed(self):
         done,remaining=split(self.data,[self.item],30);self.assertFalse(done);self.assertEqual(remaining,[self.item])
+    def test_busy_batch_acknowledges_receipt_and_retries_remaining_label(self):
+        import sqlite3
+        from unittest.mock import patch
+        from detection_library import label_batch
+        other=dict(self.item,id='e'*32,request_id='f'*32)
+        error=sqlite3.OperationalError('database is locked')
+        error.sqlite_errorcode=sqlite3.SQLITE_BUSY
+        with patch('detection_library._label_batch',side_effect=error):
+            results=label_batch(self.data,dict(items=[self.item,other]))['results']
+        self.assertTrue(results[0]['saved'])
+        self.assertEqual(results[1]['request_id'],other['request_id'])
+        self.assertFalse(results[1]['saved'])
+        self.assertTrue(results[1]['retryable'])
     def test_corrupt_receipt_is_not_confirmation(self):
         self.path.write_text('{');self.assertIsNone(confirmed(self.data,self.item))
 if __name__=='__main__':unittest.main()

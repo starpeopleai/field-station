@@ -262,6 +262,21 @@ def label(data,body):
 
 
 def label_batch(data,body):
+ import sqlite3
+ try:
+  return _label_batch(data,body)
+ except sqlite3.OperationalError as exc:
+  if (getattr(exc,'sqlite_errorcode',0) & 255) not in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED):raise
+  # An earlier item may already have committed. Only acknowledge durable receipts.
+  from review_receipts import split
+  cutoff=read(Path(data)/'review-pending-reset.json',{}).get('epoch',0)
+  results,pending=split(data,body['items'],cutoff)
+  for item in pending:
+   results.append(dict(saved=False,retryable=True,id=item.get('id'),request_id=item.get('request_id'),error='Review database busy'))
+  return dict(results=results)
+
+
+def _label_batch(data,body):
  from email_training import review_batch
  items=body.get('items')
  if not isinstance(items,list) or not 1<=len(items)<=50 or any(not isinstance(i,dict) for i in items):raise ValueError('Choose between 1 and 50 objects')
