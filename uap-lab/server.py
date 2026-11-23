@@ -65,6 +65,17 @@ class Handler(BaseHTTPRequestHandler):
                     r=lab.read(path,{})
                     if r.get('state')=='deployed' and r.get('health_verified'):releases[r['version']]=r.get('deployed_epoch')
                 self.json(dict(history,releases=releases));return
+            if p in ('/api/email-review/formation','/api/email-review/formation/tracks','/api/email-review/formation/video'):
+                import formation_overlay as overlay
+                key=q['id'][0]
+                result=overlay.status(lab.DATA,key)
+                if p.endswith(('/tracks','/video')):
+                    if result.get('state')!='ready':raise ValueError('Overlay is still preparing')
+                    job=overlay.folder(lab.DATA,key)/result['revision']
+                    if p.endswith('/tracks'):self.json(overlay.read(job/'tracks.json'))
+                    else:self.file(job/'formation-overlay.mp4','video/mp4')
+                else:self.json(result)
+                return
             if p=='/api/email-review/tags':
                 from video_tags import status
                 self.json(status(lab.DATA,q.get('id',[''])[0]));return
@@ -269,7 +280,7 @@ class Handler(BaseHTTPRequestHandler):
                     content=('<!doctype html><meta name="viewport" content="width=device-width"><title>Lab output files</title><style>body{background:#10191e;color:#e8eef0;font:17px system-ui;padding:24px}a{color:#92ded0}li{margin:12px}</style><h1>Output files</h1><ul>'+''.join('<li><a href="'+base+quote(v.name)+('/' if v.is_dir() else '')+'">'+html.escape(v.name)+('/' if v.is_dir() else '')+'</a></li>' for v in files)+'</ul>').encode()
                     self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(content)));self.end_headers();self.wfile.write(content);return
                 self.file(path);return
-            names={'/air-traffic.js':'air-traffic.js','/air-traffic.css':'air-traffic.css','/model-inspector.css':'model-inspector.css','/model-inspector.js':'model-inspector.js','/model-score-history.js':'model-score-history.js','/starpeople-mark.png':'starpeople-mark.png','/favicon.png':'favicon.png','/rf-experiment.js':'rf-experiment.js','/rf-experiment.css':'rf-experiment.css','/review-filters.js':'review-filters.js','/review-filters.css':'review-filters.css','/ce5.js':'ce5.js','/models':'models.html','/models.js':'models.js','/models.css':'models.css','/models-data.js':'models-data.js','/test-model':'model-tests.html','/model-tests.js':'model-tests.js','/ufo-engraving.png':'ufo-engraving.png','/metrics':'observation-metrics.html','/observation-metrics.js':'observation-metrics.js','/observation-metrics.css':'observation-metrics.css','/metrics.js':'metrics.js','/label-videos':'label-videos.html','/detections.js':'detections.js','/label-videos.js':'label-videos.js','/app-shell.js':'app-shell.js','/app-shell.css':'app-shell.css','/email-review':'email-review.html','/email-review.js':'email-review.js','/labels':'labels.html','/labels.js':'labels.js','/':'index.html','/events':'events.html','/events.js':'events.js','/tracks':'tracks.html','/tracks.js':'tracks.js','/app.js':'app.js','/style.css':'style.css'}
+            names={'/formation-overlay.js':'formation-overlay.js','/air-traffic.js':'air-traffic.js','/air-traffic.css':'air-traffic.css','/model-inspector.css':'model-inspector.css','/model-inspector.js':'model-inspector.js','/model-score-history.js':'model-score-history.js','/starpeople-mark.png':'starpeople-mark.png','/favicon.png':'favicon.png','/rf-experiment.js':'rf-experiment.js','/rf-experiment.css':'rf-experiment.css','/review-filters.js':'review-filters.js','/review-filters.css':'review-filters.css','/ce5.js':'ce5.js','/models':'models.html','/models.js':'models.js','/models.css':'models.css','/models-data.js':'models-data.js','/test-model':'model-tests.html','/model-tests.js':'model-tests.js','/ufo-engraving.png':'ufo-engraving.png','/metrics':'observation-metrics.html','/observation-metrics.js':'observation-metrics.js','/observation-metrics.css':'observation-metrics.css','/metrics.js':'metrics.js','/label-videos':'label-videos.html','/detections.js':'detections.js','/label-videos.js':'label-videos.js','/app-shell.js':'app-shell.js','/app-shell.css':'app-shell.css','/email-review':'email-review.html','/email-review.js':'email-review.js','/labels':'labels.html','/labels.js':'labels.js','/':'index.html','/events':'events.html','/events.js':'events.js','/tracks':'tracks.html','/tracks.js':'tracks.js','/app.js':'app.js','/style.css':'style.css'}
             names.update({name:name.lstrip('/') for name in ['/fonts/IBMPlexMono-Regular.woff2', '/fonts/IBMPlexMono-SemiBold.woff2', '/fonts/IBMPlexMono-Bold.woff2']})
             if p in names:self.file(lab.ROOT/'static'/names[p]);return
             self.send_error(404)
@@ -352,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
                 from rf_transmit import controller
                 if value.get('action','preview')!='preview':raise ValueError('Use the explicitly armed transmit control.')
                 self.json(controller(lab.DATA.parent).preview(value));return
+            if p.path=='/api/email-review/formation':
+                from formation_overlay import submit
+                self.json(submit(lab.DATA,value));return
             if p.path=='/api/email-review/tags':
                 from video_tags import save
                 self.json(save(lab.DATA,value));return

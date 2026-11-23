@@ -154,6 +154,12 @@ def main():
         if ID.fullmatch(event):
             events.setdefault(('review',event),{})
             trimmed_events.add(event)
+    from formation_overlay import process as render_overlay, status as overlay_status
+    overlay_events = {p.parent.name for p in (state/'overlays').glob('*/request.json') if ID.fullmatch(p.parent.name)}
+    for event in overlay_events:
+        render_overlay(data,event)
+        if overlay_status(data,event).get('state')=='ready':
+            events.setdefault(('review',event),{})
     groups = read(data / 'archive-review-groups.json', {}).get('groups', {})
     extras = read(state / 'context.json', {})
     from internet_archive import ArchiveAPI
@@ -172,10 +178,18 @@ def main():
             trims = {asset: r for asset,r in trims.items() if r.get('revision')}
             revisions = {asset:r['revision'] for asset,r in trims.items()}
             signature = hashlib.sha256(json.dumps([samples, extra, revisions] if revisions else [samples, extra], sort_keys=True).encode()).hexdigest()
+            overlay = overlay_status(data,event) if kind=='review' and event in overlay_events else {}
+            if overlay.get('state')=='ready':
+                signature += ':' + overlay['revision']
             if previous.get('signature') == signature and previous.get('verified') and time.time()-previous['checked'] < 86400:
                 continue
-            existing = existing_item(data, event, samples, groups)
-            if kind=='review' and trims and not existing:
+            matching_samples = samples
+            if overlay and not samples:
+                matching_samples = {a.get('sample_id') or a.get('id') or event
+                                    for rows in groups.values() for row in rows if row.get('id') == event
+                                    for a in row.get('annotations', [])}
+            existing = existing_item(data, event, matching_samples, groups)
+            if kind=='review' and (trims or overlay) and not existing:
                 event_info=read(data.parent/'notifications/outbox'/event/'event.json',{})
                 sid=event_info.get('manual_session_id','')
                 if event_info.get('kind')=='manual_recording' and re.fullmatch(r'[0-9TZ]+-[a-f0-9]{6}',sid):
@@ -194,6 +208,10 @@ def main():
                         if request.get('enabled'):
                             if asset not in files:raise ValueError('Full original required before publishing a trim')
                             files[asset[:-4]+'-trimmed.mp4'] = request_path(data,event,asset).parent / (request['revision']+'.mp4')
+                if overlay.get('state')=='ready':
+                    overlay_dir=state/'overlays'/event/overlay['revision']
+                    files['formation-overlay.mp4']=overlay_dir/'formation-overlay.mp4'
+                    files['formation-tracks.json']=overlay_dir/'tracks.json'
                 manifest['available_files'] = sorted(files)
                 sidecar = Path(tmp) / 'starred.json'
                 sidecar.write_text(json.dumps(manifest, sort_keys=True))
