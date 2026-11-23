@@ -4,7 +4,19 @@ from pathlib import Path
 from label_queue import read
 
 def attach(data,rows):
- selected=[r for r in rows if r.get('human_reviewed') and r.get('label')=='anomalous']
+ root=Path(data).parent/'archive-tags/starred-bundles'
+ for row in rows:
+  if not row.get('starred'):continue
+  from object_omission import parse
+  try:parts=parse(row['id'])
+  except ValueError:continue
+  kind=parts[0]
+  receipt=read(root/(kind+'-'+parts[1]+'.json'),{})
+  identifier=receipt.get('identifier','')
+  if receipt.get('verified') and parts[2] in receipt.get('samples',[]) and re.fullmatch('[A-Za-z0-9_-]+',identifier):
+   row['archive_url']='https://archive.org/details/'+identifier
+   row['archive_bundle_url']='https://archive.org/compress/'+identifier
+ selected=[r for r in rows if not r.get('archive_url') and r.get('human_reviewed') and r.get('label')=='anomalous']
  if not selected:return rows
  wanted={(r.get('kind'),r.get('video_id',r['id']),r.get('sample_id',r['id'])):r for r in selected}
  groups=read(Path(data)/'archive-review-groups.json',{}).get('groups',{})
