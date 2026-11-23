@@ -79,6 +79,12 @@ def evidence(data, kind, event, samples, extra):
             if (folder / name).is_file():
                 files[name] = folder / name
         clip = native_path(data, event)
+        if not clip.is_file() and record and not (folder / 'local-media-retired.json').exists():
+            from email_review import prepare
+            try:
+                prepare(data, event)
+            except (OSError, ValueError, RuntimeError):
+                pass  # Available frames can be published while the video is recovered.
         if clip.is_file():
             files['review.mp4'] = clip
     else:
@@ -151,6 +157,7 @@ def main():
             identifier = previous.get('identifier') or existing or ('starpeople-field-starred-' + kind + '-' + event)
             with tempfile.TemporaryDirectory(dir=state) as tmp:
                 files, manifest = evidence(data, kind, event, samples, extra)
+                manifest['available_files'] = sorted(files)
                 sidecar = Path(tmp) / 'starred.json'
                 sidecar.write_text(json.dumps(manifest, sort_keys=True))
                 files['starred.json'] = sidecar
