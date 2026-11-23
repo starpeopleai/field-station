@@ -6,6 +6,7 @@
  const undo=document.querySelector('#formation-undo'),save=document.querySelector('#formation-save'),message=document.querySelector('#formation-status');
  const predict=document.querySelector('#formation-predict'),exportPrediction=document.querySelector('#formation-export-prediction');
  let estimates=[],savedJob=null;
+ const saveStatus=document.querySelector('#formation-save-status');
  const route='/api/email-review/formation',query='?'+new URLSearchParams({id});
  let picking=false,points=[],anchor=null,tracks=[],revision='',timer,state='',sending=false;
  controls.hidden=false;controls.style.display='';
@@ -16,6 +17,12 @@
      if(link.hidden)link.removeAttribute('href');
      else link.href=route+'/video'+query+'&download=1&variant='+variant+'&revision='+encodeURIComponent(savedJob.revision);
    }
+   if(sending)saveStatus.textContent='Saving formation…';
+   else if(picking&&points.length)saveStatus.textContent='Unsaved selection · '+points.length+' lights';
+   else if(state==='ready')saveStatus.textContent='Formation saved on station · '+savedJob.points.length+' lights';
+   else if(state==='queued'||state==='tracking')saveStatus.textContent='Selection saved on station · tracking lights…';
+   else if(state==='error')saveStatus.textContent='Selection saved on station · tracking needs attention';
+   else saveStatus.textContent=savedJob?'No saved formation':'Checking saved formation…';
    tools.hidden=!toggle.checked&&!state&&!picking;
    exportPrediction.hidden=!predict.checked||picking||state!=='ready'||savedJob?.prediction===true;
    exportPrediction.disabled=sending;
@@ -37,10 +44,10 @@
        const r=await fetch(route+'/tracks'+query+'&predict=1&v='+job.revision);if(!r.ok)throw Error('Could not load the tracks.');
        const payload=await r.json();tracks=payload.tracks;estimates=payload.predictions||[];revision=job.revision;draw();
      }
-     if(!toggle.checked)message.textContent=picking?'Selected points retained.':state==='ready'?'Formation saved · overlay hidden':state==='error'?job.error:state?'Tracking lights…':'';
+     if(!toggle.checked)message.textContent=picking&&points.length?'Choose Track and archive to save.':state==='error'?job.error:'';
      else if(!picking)message.textContent=state==='error'?job.error:state==='ready'?(predict.checked?'Dashed lines and diamonds indicate predicted positions.':'Tracked lights · image-plane positions'):state?'Tracking lights…':'';
      if(state==='queued'||state==='tracking')timer=setTimeout(refresh,3000);
-   }catch(e){if(toggle.checked)message.textContent=e.message;timer=setTimeout(refresh,5000);}
+   }catch(e){message.textContent=e.message;timer=setTimeout(refresh,5000);}
  }
  toggle.onchange=async()=>{
    buttons();draw();
