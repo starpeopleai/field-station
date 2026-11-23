@@ -5,6 +5,7 @@ from label_queue import read
 
 def attach(data,rows):
  root=Path(data).parent/'archive-tags/starred-bundles'
+ public_annotations=read(root/'public-annotations.json',{}) if any(r.get('starred') for r in rows) else {}
  for row in rows:
   if not row.get('starred'):continue
   from object_omission import parse
@@ -19,6 +20,13 @@ def attach(data,rows):
   if receipt.get('verified') and covered and re.fullmatch('[A-Za-z0-9_-]+',identifier):
    row['archive_url']='https://archive.org/details/'+identifier
    row['archive_bundle_url']='https://archive.org/compress/'+identifier
+  else:
+   published=public_annotations.get(':'.join(parts),'')
+   if re.fullmatch('[A-Za-z0-9_-]+',published):
+    row['archive_url']='https://archive.org/details/'+published
+    row['archive_bundle_url']='https://archive.org/compress/'+published
+   else:
+    row['archive_bundle_updating']=True
  selected=[r for r in rows if not r.get('archive_url') and r.get('human_reviewed') and r.get('label')=='anomalous']
  if not selected:return rows
  wanted={(r.get('kind'),r.get('video_id',r['id']),r.get('sample_id',r['id'])):r for r in selected}
