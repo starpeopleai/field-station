@@ -59,3 +59,5 @@
 #objectViews.review-sidebar .review-time summary { color:var(--ink) }
 #objectViews.review-sidebar .review-time input { font-size:11px;padding-inline:4px;letter-spacing:0 }
 @media(max-width:420px){.review-time .time-fields {grid-template-columns:1fr}}
+
+.review-time-clips:not(:empty){display:grid;gap:8px;margin-top:12px;font-size:12px}
