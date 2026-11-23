@@ -9,6 +9,7 @@ from crop_client import CropClassifier
 from native_tracks import NativeTracks
 from recognition_store import AsyncRecognitionStore as RecognitionStore
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+import detection_zone
 from native_motion import NativeMotion
 from native_frames import timing_rows
 from temporal_runtime import TemporalRuntime
@@ -139,6 +140,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
      prefetched=(str(next_source),next_entry['sha256'],verifier.submit(verify_source,next_source,next_entry['sha256']))
     timings=timing_rows(folder,entry['start'],entry['end']);pts_values=[t['pts_seconds'] for t in timings];health=read(folder/'capture-health.json',{});stages['source_verification']+=time.perf_counter()-source_started;previous_finish=time.perf_counter()
     display_current=preview is not None and time.time()-entry.get('end_epoch',0)<3
+    zone=detection_zone.settings(read(output.parent.parent/"station-settings.json",{}))
     unavailable_pts=[]
     for image,header in decoder.frames(source,preview_interval=.2 if display_current else 0,color=True):
      frame_started=time.perf_counter();stages['decode_wait']+=frame_started-previous_finish
@@ -158,6 +160,9 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
       state['source_timestamp_gaps']+=int(delta>1.5/59.94005994)
      if state['coverage_first_sequence'] is None:state['coverage_first_sequence']=seq
      boxes,metrics=detector.update(image,pts)
+     if boxes and zone['zone_enabled']:
+      boxes=detection_zone.filter_boxes(boxes,image.shape,zone['zone_bounds'])
+      metrics=dict(metrics,candidate_count=len(boxes))
      if sink:sink.submit(timing,boxes,metrics,state['generation'],health,state)
      observations=tracker.update(seq,pts,boxes);encoded=[];indices=[];contexts=[]
      for observation_index,observation in enumerate(observations):

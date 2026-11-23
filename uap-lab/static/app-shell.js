@@ -191,8 +191,67 @@
  const dialog=document.createElement('dialog');dialog.id='stationSettings';dialog.setAttribute('aria-labelledby','stationSettingsTitle');
  dialog.innerHTML='<form method="dialog" class="settings-heading"><h2 id="stationSettingsTitle">Settings</h2><button aria-label="Close settings" value="close">×</button></form><label class="settings-option" for="negativeBacklogLimit"><span>Limit non-anomalous frames</span><input id="negativeBacklogLimit" type="checkbox" role="switch" aria-describedby="negativeBacklogHelp" disabled></label><label id="negativeBacklogCountRow" class="settings-option settings-delay" for="negativeBacklogCount" hidden><span>Frame limit</span><select id="negativeBacklogCount" disabled><option value="250">250</option><option value="500">500</option><option value="1000" selected>1,000</option><option value="2500">2,500</option><option value="5000">5,000</option></select></label><p id="negativeBacklogHelp">Automatically remove excess machine-only, non-anomalous detections, day or night. Human-reviewed frames, starred evidence, and manual recordings are kept. New and actively reviewed frames may temporarily exceed the limit.</p><label class="settings-option" for="daytimeAutoCleanup"><span>Daytime auto-cleanup</span><input id="daytimeAutoCleanup" type="checkbox" role="switch" disabled></label><label class="settings-option settings-delay" for="daytimeCleanupDelay"><span>Delete after</span><select id="daytimeCleanupDelay" disabled><option value="10800">3 hours</option><option value="21600">6 hours</option><option value="43200">12 hours</option><option value="86400">24 hours</option></select></label><p id="daytimeCleanupHelp">Delete machine-only, non-anomalous daytime detections after the selected time from capture. Runs during daylight; nighttime detections, human-reviewed training data, starred evidence, and manual recordings are kept.</p><p id="stationLocation">Automatic location: unknown</p><p id="stationSettingsStatus" role="status"></p>';
  document.body.append(dialog);const cap=dialog.querySelector('#negativeBacklogLimit'),capCount=dialog.querySelector('#negativeBacklogCount'),toggle=dialog.querySelector('#daytimeAutoCleanup'),delay=dialog.querySelector('#daytimeCleanupDelay'),status=dialog.querySelector('[role=status]');toggle.setAttribute('aria-describedby','daytimeCleanupHelp');delay.setAttribute('aria-describedby','daytimeCleanupHelp');let confirmed={negative_backlog_enabled:false,negative_backlog_limit:1000,daytime_auto_cleanup:false,after_seconds:10800},busy=false;
- function render(state){const place=state.observation_location;dialog.querySelector('#stationLocation').textContent=place?.status==='known'?'Location: '+[place.county,place.state,place.country].join(', ')+' · automatic, county only':'Automatic location: unknown';confirmed=state;cap.checked=state.negative_backlog_enabled===true;cap.disabled=busy;capCount.value=String(state.negative_backlog_limit??1000);capCount.disabled=busy||!cap.checked;dialog.querySelector('#negativeBacklogCountRow').hidden=!cap.checked;toggle.checked=state.daytime_auto_cleanup===true;delay.value=String(state.after_seconds);toggle.disabled=busy;delay.disabled=busy||!toggle.checked;}
- async function load(){cap.disabled=true;capCount.disabled=true;toggle.disabled=true;delay.disabled=true;status.textContent='Loading…';try{const r=await fetch('/api/settings',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error();const state=await r.json();render(state);status.textContent='';}catch{status.textContent='Settings unavailable. Close and reopen to retry.';}}
+ const zoneLabel=document.createElement('label');
+ zoneLabel.className='settings-option';
+ zoneLabel.innerHTML='<span>Detection zone</span><input type="checkbox" role="switch" disabled>';
+ const zoneSwitch=zoneLabel.querySelector('input');
+ const zoneEditor=document.createElement('div');
+ zoneEditor.hidden=true;
+ zoneEditor.innerHTML='<p>Drag a rectangle around the area to monitor. Detections use the center of each object.</p><canvas width="640" height="360" tabindex="0" aria-label="Detection zone. Drag to draw, use arrow keys to move, or Shift and arrows to resize."></canvas><button type="button">Save zone</button><span role="status" aria-live="polite"></span>';
+ const zoneCanvas=zoneEditor.querySelector('canvas'),zoneSave=zoneEditor.querySelector('button'),zoneStatus=zoneEditor.querySelector('span');
+ Object.assign(zoneCanvas.style,{display:'block',width:'100%',height:'auto',touchAction:'none',cursor:'crosshair',marginBottom:'.5rem'});
+ const zoneAnchor=dialog.querySelector('.settings-option');
+ zoneAnchor.before(zoneLabel,zoneEditor);
+ let zoneSaved=[0,0,1,1],zoneDraft=zoneSaved.slice(),zoneOn=false,zoneBusy=false,zoneStart=null,zonePhoto=null,zoneLoadId=0;
+ function paintZone(){
+  const ctx=zoneCanvas.getContext('2d'),w=zoneCanvas.width,h=zoneCanvas.height;
+  ctx.fillStyle='#242424';ctx.fillRect(0,0,w,h);
+  if(zonePhoto)ctx.drawImage(zonePhoto,0,0,w,h);
+  const [l,t,r,b]=zoneDraft;
+  ctx.beginPath();ctx.rect(0,0,w,h);ctx.rect(l*w,t*h,(r-l)*w,(b-t)*h);
+  ctx.fillStyle='rgba(0,0,0,.55)';ctx.fill('evenodd');
+  ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,w/320);
+  ctx.strokeRect(l*w,t*h,(r-l)*w,(b-t)*h);
+  zoneSave.disabled=zoneBusy||!zoneOn||zoneSaved.every((v,i)=>v===zoneDraft[i]);
+ }
+ function loadZonePhoto(){
+  const seq=++zoneLoadId,img=new Image();
+  zonePhoto=null;paintZone();
+  img.onload=()=>{if(seq!==zoneLoadId)return;zonePhoto=img;zoneCanvas.width=Math.min(960,img.naturalWidth);zoneCanvas.height=Math.round(zoneCanvas.width*img.naturalHeight/img.naturalWidth);paintZone();};
+  img.onerror=()=>{if(seq===zoneLoadId)zoneStatus.textContent='Camera preview unavailable.';};
+  img.src='/api/live/frame?t='+Date.now();
+ }
+ function renderZone(s){
+  zoneOn=s.zone_enabled===true;zoneSaved=(s.zone_bounds||[0,0,1,1]).slice();zoneDraft=zoneSaved.slice();
+  zoneSwitch.checked=zoneOn;zoneSwitch.disabled=zoneBusy;zoneEditor.hidden=!zoneOn;paintZone();
+ }
+ function point(e){const b=zoneCanvas.getBoundingClientRect();return [Math.min(1,Math.max(0,(e.clientX-b.left)/b.width)),Math.min(1,Math.max(0,(e.clientY-b.top)/b.height))];}
+ zoneCanvas.onpointerdown=e=>{if(zoneBusy||!e.isPrimary||e.button!==0)return;zoneStart=point(e);zoneCanvas.setPointerCapture(e.pointerId);};
+ zoneCanvas.onpointermove=e=>{if(!zoneStart||!e.isPrimary)return;const [x,y]=point(e),[a,b]=zoneStart;zoneDraft=[Math.min(x,a),Math.min(y,b),Math.max(x,a),Math.max(y,b)];paintZone();};
+ zoneCanvas.onpointerup=e=>{if(!zoneStart||!e.isPrimary)return;zoneCanvas.onpointermove(e);zoneStart=null;if(zoneDraft[2]<=zoneDraft[0]||zoneDraft[3]<=zoneDraft[1])zoneDraft=zoneSaved.slice();paintZone();};
+ zoneCanvas.onpointercancel=()=>{zoneStart=null;zoneDraft=zoneSaved.slice();paintZone();};
+ zoneCanvas.onkeydown=e=>{
+  const axis={ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[1,-1],ArrowDown:[1,1]}[e.key];
+  if(!axis||zoneBusy)return;e.preventDefault();
+  const [i,sign]=axis,d=zoneDraft.slice(),step=sign*.01;
+  if(e.shiftKey)d[i+2]=Math.min(1,Math.max(d[i]+.01,d[i+2]+step));
+  else{const move=Math.max(-d[i],Math.min(1-d[i+2],step));d[i]+=move;d[i+2]+=move;}
+  zoneDraft=d;paintZone();
+ };
+ async function commitZone(patch){
+  if(zoneBusy)return;zoneBusy=true;zoneSwitch.disabled=true;zoneSave.disabled=true;zoneStatus.textContent='Saving…';
+  try{
+   const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+   if(!auth.ok)throw Error();const {token}=await auth.json();
+   const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(patch),signal:AbortSignal.timeout(10000)});
+   if(!response.ok)throw Error();const state=await response.json();Object.assign(confirmed,{zone_enabled:state.zone_enabled,zone_bounds:state.zone_bounds});renderZone(state);zoneStatus.textContent='Saved';if(state.zone_enabled&&patch.zone_enabled)loadZonePhoto();
+  }catch{zoneSwitch.checked=zoneOn;status.textContent='Detection zone could not be saved.';zoneStatus.textContent='Save failed. Try again.';}
+  finally{zoneBusy=false;zoneSwitch.disabled=false;paintZone();}
+ }
+ zoneSwitch.onchange=()=>commitZone({zone_enabled:zoneSwitch.checked});
+ zoneSave.onclick=()=>commitZone({zone_bounds:zoneDraft});
+ function render(state){renderZone(state);const place=state.observation_location;dialog.querySelector('#stationLocation').textContent=place?.status==='known'?'Location: '+[place.county,place.state,place.country].join(', ')+' · automatic, county only':'Automatic location: unknown';confirmed=state;cap.checked=state.negative_backlog_enabled===true;cap.disabled=busy;capCount.value=String(state.negative_backlog_limit??1000);capCount.disabled=busy||!cap.checked;dialog.querySelector('#negativeBacklogCountRow').hidden=!cap.checked;toggle.checked=state.daytime_auto_cleanup===true;delay.value=String(state.after_seconds);toggle.disabled=busy;delay.disabled=busy||!toggle.checked;}
+ async function load(){zoneSwitch.disabled=true;cap.disabled=true;capCount.disabled=true;toggle.disabled=true;delay.disabled=true;status.textContent='Loading…';try{const r=await fetch('/api/settings',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error();const state=await r.json();render(state);zoneStatus.textContent='';if(state.zone_enabled)loadZonePhoto();status.textContent='';}catch{status.textContent='Settings unavailable. Close and reopen to retry.';}}
  open.onclick=()=>{nav.hidden=true;document.getElementById('menuToggle').setAttribute('aria-expanded','false');dialog.showModal();void load();};
  dialog.addEventListener('close',()=>document.getElementById('menuToggle').focus());
  const saveSettings=async()=>{if(busy)return;const requested={negative_backlog_enabled:cap.checked,negative_backlog_limit:Number(capCount.value),daytime_auto_cleanup:toggle.checked,after_seconds:Number(delay.value)};busy=true;cap.disabled=true;capCount.disabled=true;toggle.disabled=true;delay.disabled=true;status.textContent='Saving…';try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!auth.ok)throw Error();const {token}=await auth.json();const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(requested),signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();const state=await response.json();render(state);status.textContent='Saved';}catch{render(confirmed);status.textContent='Save could not be confirmed. Reopen settings to check.';}finally{busy=false;render(confirmed);}};
