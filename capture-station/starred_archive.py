@@ -125,6 +125,7 @@ def publish(api, identifier, files, checks, existing, acknowledged, checkpoint, 
         if not existing:
             headers.update({'x-archive-auto-make-bucket': '1', 'x-archive-meta-collection': 'opensource_movies',
                             'x-archive-meta-mediatype': 'movies', 'x-archive-meta-subject': 'StarPeople.ai;Field Station;'+('starred' if starred else 'operator-trim'),
+                            'x-archive-meta-creator': 'UFO Files Project',
                             'x-archive-meta-title': 'Field Station '+('starred detection ' if starred else 'reviewed recording ') + identifier.rsplit('-', 1)[-1]})
         with path.open('rb') as stream, api.raw('PUT', api.url(identifier, name), stream, headers, auth=True):
             pass
