@@ -138,6 +138,9 @@ class Handler(BaseHTTPRequestHandler):
             if p=='/api/email-review':
                 from email_review import detail,prepare
                 key=q['id'][0];info=detail(lab.DATA,key)
+                from detection_actions import stars
+                prefix='review:'+key+':'
+                info['starred_samples']=[k[len(prefix):] for k in stars(lab.DATA) if k.startswith(prefix)]
                 if info['clip']['state']=='preparing':
                     def build():
                         try:prepare(lab.DATA,key)

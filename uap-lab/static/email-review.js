@@ -24,8 +24,44 @@ function animate(){renderHandle=null;if(video.paused)return;if(stopAtTrimEnd())r
 
 async function request(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(body)});const result=await r.json();if(!r.ok)throw Error(result.error);return result}
 function choose(a){if(savedRange()&&(a.review_clip_time<savedRange()[0]||a.review_clip_time>=savedRange()[1])){showFullVideo=true;updatePlayerRange();}dirty=false;video.pause();selectedId=a.sample_id;box=[...a.bounds];label.value=a.label;video.currentTime=a.review_clip_time;draw()}
-function listing(){document.querySelector('#count').textContent=annotations.length;const list=document.querySelector('#annotations');list.replaceChildren();if(!annotations.length){list.textContent='No saved annotations yet.';return}for(const a of [...annotations].sort((a,b)=>a.review_clip_time-b.review_clip_time)){const row=document.createElement('div');row.className='annotation';row.dataset.sampleId=a.sample_id;const text=document.createElement('span');text.textContent=a.review_clip_time.toFixed(3)+' s · '+displayLabel(a.label);const edit=document.createElement('button');edit.textContent='Jump / edit';edit.onclick=()=>choose(a);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=async()=>{try{await request('/api/email-review/delete',{id,sample_id:a.sample_id});annotations=annotations.filter(v=>v.sample_id!==a.sample_id);if(selectedId===a.sample_id){selectedId=null;box=null}showCompletion(true);loadTrim();listing();draw();status('Annotation removed; review history retained.')}catch(e){status(e.message,true)}};row.append(text,edit,remove);list.append(row)}}
-async function load(){if(loadingData)return;loadingData=true;try{const r=await fetch('/api/email-review?id='+encodeURIComponent(id));data=await r.json();if(!r.ok)throw Error(data.error);token=data.token;if(data.clip.state!=='ready'){status(data.clip.error||(data.clip.phase==='playback'?'Preparing playback…':'Preparing the surrounding video…'),!!data.clip.error);if(!data.clip.error)setTimeout(load,1000);return}annotations=data.annotations;listing();showCompletion(data.completed);label.replaceChildren(...data.labels.map(v=>new Option(displayLabel(v),v)));label.value=data.label;if(!video.getAttribute('src'))video.src='/api/email-review/video?id='+encodeURIComponent(id);document.querySelector('#play').disabled=false;status('Preparing the surrounding video…');frameReady()}catch(e){status(e.message,true)}finally{loadingData=false}}
+const reviewStars=new Set(),pendingStars=new Set();
+function paintReviewStars(){
+ for(const button of document.querySelectorAll('button[data-review-star]')){
+  const sample=button.dataset.reviewStar,active=reviewStars.has(sample);
+  button.textContent=active?'★':'☆';
+  button.title=active?'Unstar detection':'Star detection';
+  button.setAttribute('aria-label',button.title);
+  button.setAttribute('aria-pressed',String(active));
+  button.disabled=pendingStars.has(sample)||!token;
+ }
+}
+function bindReviewStar(button,sample){
+ button.type='button';button.dataset.reviewStar=sample;
+ button.onclick=async()=>{
+  if(pendingStars.has(sample))return;
+  const wanted=!reviewStars.has(sample);
+  pendingStars.add(sample);paintReviewStars();
+  try{
+   const result=await request('/api/objects/star',{id:'review:'+id+':'+sample,starred:wanted});
+   if(result.starred!==wanted)throw Error('Star change was not confirmed.');
+   if(wanted)reviewStars.add(sample);else reviewStars.delete(sample);
+  }catch(error){status('Star needs attention: '+error.message,true);}
+  finally{pendingStars.delete(sample);paintReviewStars();}
+ };
+}
+function loadReviewStars(info){
+ if(window.FIELD_PUBLIC_READ_ONLY===true)return;
+ reviewStars.clear();
+ for(const sample of info.starred_samples||[])reviewStars.add(sample);
+ const requested=new URLSearchParams(location.search).get('sample');
+ const sample=requested&&info.annotations.some(a=>a.sample_id===requested)?requested:id;
+ const button=document.querySelector('#reviewStar');
+ button.hidden=info.event?.kind==='manual_recording'&&sample===id;
+ bindReviewStar(button,sample);paintReviewStars();
+}
+
+function listing(){document.querySelector('#count').textContent=annotations.length;const list=document.querySelector('#annotations');list.replaceChildren();if(!annotations.length){list.textContent='No saved annotations yet.';return}for(const a of [...annotations].sort((a,b)=>a.review_clip_time-b.review_clip_time)){const row=document.createElement('div');row.className='annotation';row.dataset.sampleId=a.sample_id;const text=document.createElement('span');text.textContent=a.review_clip_time.toFixed(3)+' s · '+displayLabel(a.label);const edit=document.createElement('button');edit.textContent='Jump / edit';edit.onclick=()=>choose(a);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=async()=>{try{await request('/api/email-review/delete',{id,sample_id:a.sample_id});annotations=annotations.filter(v=>v.sample_id!==a.sample_id);if(selectedId===a.sample_id){selectedId=null;box=null}showCompletion(true);loadTrim();listing();draw();status('Annotation removed; review history retained.')}catch(e){status(e.message,true)}};row.append(text);if(window.FIELD_PUBLIC_READ_ONLY!==true){const star=document.createElement('button');bindReviewStar(star,a.sample_id);row.append(star);}row.append(edit,remove);list.append(row)}paintReviewStars()}
+async function load(){if(loadingData)return;loadingData=true;try{const r=await fetch('/api/email-review?id='+encodeURIComponent(id));data=await r.json();if(!r.ok)throw Error(data.error);token=data.token;loadReviewStars(data);if(data.clip.state!=='ready'){status(data.clip.error||(data.clip.phase==='playback'?'Preparing playback…':'Preparing the surrounding video…'),!!data.clip.error);if(!data.clip.error)setTimeout(load,1000);return}annotations=data.annotations;listing();showCompletion(data.completed);label.replaceChildren(...data.labels.map(v=>new Option(displayLabel(v),v)));label.value=data.label;if(!video.getAttribute('src'))video.src='/api/email-review/video?id='+encodeURIComponent(id);document.querySelector('#play').disabled=false;status('Preparing the surrounding video…');frameReady()}catch(e){status(e.message,true)}finally{loadingData=false}}
 video.addEventListener('loadedmetadata',()=>{canvas.width=video.videoWidth;canvas.height=video.videoHeight;scrub.max=Math.max(0,video.duration-.001);if(data?.clip?.state==='ready'){video.currentTime=data.clip.event_time;box=data.event.bounds}});
 function frameReady(){
  if(video.readyState<2||video.seeking||data?.clip?.state!=='ready')return;
