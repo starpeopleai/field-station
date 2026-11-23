@@ -67,6 +67,15 @@ def submit(data, body):
     job = base / revision
     job.mkdir()
     spec = dict(revision=revision, anchor=anchor, start=start, end=min(end,duration), points=seeds)
+    if body.get('prediction') is True:
+        spec['prediction'] = True
+        previous = status(data, key)
+        if body.get('from_revision'):
+            if previous.get('revision') != body['from_revision'] or previous.get('state') != 'ready':
+                raise ValueError('Formation changed. Reload before exporting.')
+            if any(spec[k] != previous[k] for k in ('start','end','anchor','points')):
+                raise ValueError('Saved formation range or points changed')
+            spec['from_revision'] = previous['revision']
     write(job/'status.json', dict(state='queued'))
     write(base/'request.json', spec)
     threading.Thread(target=process, args=(data,key), daemon=True).start()
@@ -147,7 +156,18 @@ def segments(points):
     return [(a,b) for a,b in zip(points,points[1:]+points[:1]) if a and b]
 
 
-def render(source, output, spec, rows):
+def dashed_line(img, p, q):
+    import cv2
+    dx,dy=q[0]-p[0],q[1]-p[1]
+    length=math.hypot(dx,dy)
+    if length<1:return
+    for start in range(0,math.ceil(length),16):
+        ends=[tuple(round(a+d*u/length) for a,d in zip(p,(dx,dy)))
+              for u in (start,min(start+8,length))]
+        cv2.line(img,*ends,(20,195,235),1,cv2.LINE_AA)
+
+
+def render(source, output, spec, rows, predictions=None):
     import av
     import cv2
     from bisect import bisect_left
@@ -172,11 +192,30 @@ def render(source, output, spec, rows):
             points=[tuple(round(x+(y-x)*alpha) for x,y in zip(p,q)) if p and q else None
                     for p,q in zip(a[1],b[1])]
             img=f.to_ndarray(format='bgr24')
-            for p,q in segments(points):
+            predicted=set()
+            if predictions is not None:
+                for j,p in enumerate(points):
+                    if p is not None:continue
+                    left=a[1][j] or predictions[lo][j]
+                    right=b[1][j] or predictions[hi][j]
+                    if left and right:
+                        points[j]=tuple(round(x+(y-x)*alpha) for x,y in zip(left,right))
+                        predicted.add(j)
+            for j,p in enumerate(points):
+                k=(j+1)%len(points)
+                q=points[k]
+                if not p or not q:continue
+                if j in predicted or k in predicted:
+                    dashed_line(img,p,q)
+                    continue
                 cv2.line(img,p,q,(20,195,235),1,cv2.LINE_AA)
-            for p in filter(None,points):
+            for j,p in enumerate(points):
+                if not p:continue
+                if j in predicted:
+                    cv2.drawMarker(img,p,(20,195,235),cv2.MARKER_DIAMOND,16,1,cv2.LINE_AA)
+                    continue
                 cv2.circle(img,p,7,(20,195,235),1,cv2.LINE_AA)
-            cv2.putText(img,'Formation overlay',(20,34),cv2.FONT_HERSHEY_SIMPLEX,.7,(20,195,235),1,cv2.LINE_AA)
+            cv2.putText(img,'Formation overlay | dashed = predicted' if predictions is not None else 'Formation overlay',(20,34),cv2.FONT_HERSHEY_SIMPLEX,.7,(20,195,235),1,cv2.LINE_AA)
             frame=av.VideoFrame.from_ndarray(img,format='bgr24')
             frame.pts,frame.time_base=f.pts-first,s.time_base
             for packet in enc.encode(frame):dest.mux(packet)
@@ -195,9 +234,24 @@ def process(data,key):
         try:
             write(job/'status.json',dict(state='tracking'))
             source=native_path(data,key)
-            rows=track(source,spec)
-            render(source,job/'building.mp4',spec,rows)
-            (job/'building.mp4').replace(job/'formation-overlay.mp4')
+            if spec.get('from_revision'):
+                previous=base/spec['from_revision']
+                rows=read(previous/'tracks.json')['tracks']
+                if not (job/'formation-overlay.mp4').exists():
+                    os.link(previous/'formation-overlay.mp4',job/'formation-overlay.mp4')
+            else:
+                rows=track(source,spec)
+                render(source,job/'building.mp4',spec,rows)
+                (job/'building.mp4').replace(job/'formation-overlay.mp4')
+            if spec.get('prediction'):
+                from formation_prediction import predict
+                estimates=predict(rows)
+                render(source,job/'building.mp4',spec,rows,estimates)
+                (job/'building.mp4').replace(job/'formation-predicted.mp4')
+                write(job/'formation-predictions.json',dict(revision=spec['revision'],
+                      method='constant relative image-plane velocity; measured reference points only',
+                      coordinates='native image pixels',max_horizon_seconds=8,
+                      predictions=[[row[0],est] for row,est in zip(rows,estimates)]))
             write(job/'tracks.json',dict(spec,coordinates='native image pixels',tracks=rows))
             write(job/'status.json',dict(state='ready'))
         except Exception as e:

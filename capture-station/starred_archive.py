@@ -212,6 +212,9 @@ def main():
                     overlay_dir=state/'overlays'/event/overlay['revision']
                     files['formation-overlay.mp4']=overlay_dir/'formation-overlay.mp4'
                     files['formation-tracks.json']=overlay_dir/'tracks.json'
+                    if overlay.get('prediction'):
+                        for name in ('formation-predicted.mp4','formation-predictions.json'):
+                            files[name]=overlay_dir/name
                 manifest['available_files'] = sorted(files)
                 sidecar = Path(tmp) / 'starred.json'
                 sidecar.write_text(json.dumps(manifest, sort_keys=True))

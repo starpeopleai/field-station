@@ -72,7 +72,12 @@ class Handler(BaseHTTPRequestHandler):
                 if p.endswith(('/tracks','/video')):
                     if result.get('state')!='ready':raise ValueError('Overlay is still preparing')
                     job=overlay.folder(lab.DATA,key)/result['revision']
-                    if p.endswith('/tracks'):self.json(overlay.read(job/'tracks.json'))
+                    if p.endswith('/tracks'):
+                        tracks=overlay.read(job/'tracks.json')
+                        if q.get('predict')==['1']:
+                            from formation_prediction import predict
+                            tracks['predictions']=predict(tracks['tracks'])
+                        self.json(tracks)
                     else:self.file(job/'formation-overlay.mp4','video/mp4')
                 else:self.json(result)
                 return
