@@ -36,6 +36,15 @@
   image.addEventListener('click',event=>{if(!failed)return;event.preventDefault();event.stopImmediatePropagation();attempts=0;retry();},true);
   image.append(img,status);img.src=url;
  }
+ function showPinMark(card,pinned){
+  const existing=card.querySelector('.pin-mark');
+  if(!pinned){existing?.remove();return;}
+  if(existing)return;
+  const mark=el('span');mark.className='pin-mark';mark.setAttribute('role','img');mark.setAttribute('aria-label','Pinned');mark.title='Pinned';
+  mark.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><g transform="rotate(34 12 12)"><path d="M8 3h8l-1 3v4l3 3v2H6v-2l3-3V6z" fill="currentColor"/><path d="M12 15v6"/></g></svg>';
+  if(card.classList.contains('manual-recording-card'))card.querySelector('h2').prepend(mark);
+  else card.append(mark);
+ }
  function pinButton(row){
   const button=el('button',row.pinned_at?'Unpin':'Pin');button.type='button';button.className='review-pin';
   button.setAttribute('aria-pressed',String(!!row.pinned_at));
@@ -47,6 +56,7 @@
     const result=await api('/api/objects/pin',{id:row.id,pinned:!row.pinned_at});
     row.pinned_at=result.pinned_at;button.textContent=row.pinned_at?'Unpin':'Pin';button.setAttribute('aria-pressed',String(!!row.pinned_at));
     const grid=$('detectionQueue'),node=button.closest('article');
+    if(node)showPinMark(node,row.pinned_at);
     if(node?.parentNode===grid){
      const next=[...grid.children].find(n=>{
       const other=rows.get(n.dataset.id);if(!other||other.id===row.id)return false;
@@ -64,7 +74,7 @@
   const heading=el('h2',new Date(row.created*1000).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}));
   const state=el('span',row.state==='recording'?'Recording':row.state==='ready'?'Ready':row.state==='failed'?'Preparation needs attention':'Preparing video');state.className='manual-state';
   const duration=Number(row.duration_seconds),meta=el('p',Number.isFinite(duration)&&duration>0?Math.floor(duration/60)+'m '+Math.round(duration%60)+'s':'Manual recording');
-  n.append(heading,state,meta);
+  n.append(heading,state,meta);showPinMark(n,row.pinned_at);
   if(row.deletion?.state){state.textContent='Deleting';n.append(el('p',row.deletion.error?'Deletion will retry: '+row.deletion.error:row.deletion.state==='removing_from_archive'?'Removing from Internet Archive…':'Deleting recording and its Internet Archive upload…'));return n;}
   if(window.FIELD_PUBLIC_READ_ONLY!==true&&row.state!=='recording'){
    const remove=el('button','Delete recording');remove.type='button';remove.className='delete-manual-recording';
@@ -111,7 +121,7 @@
   actions.append(grid,links,error);const box=el('input');box.type='checkbox';box.className='frame-select';box.setAttribute('aria-label','Select object for bulk classification');box.onclick=e=>{e.stopPropagation();select(row.id,e);};
   n.addEventListener('click',e=>{if(e.shiftKey&&!e.target.closest('a,input,.detection-star')){e.preventDefault();e.stopImmediatePropagation();select(row.id,e);}},true);
   const models=modelResults(row);
-  n.append(image,models,actions,box);return n;
+  n.append(image,models,actions,box);showPinMark(n,row.pinned_at);return n;
  }
  const tabButtons=new Map(),tabCounts={};let completeCounts=false;
  function renderTabs(counts,indexing=false,filters,sources){
