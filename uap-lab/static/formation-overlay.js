@@ -10,6 +10,12 @@
  let picking=false,points=[],anchor=null,tracks=[],revision='',timer,state='',sending=false;
  controls.hidden=false;controls.style.display='';
  function buttons(){
+   for(const variant of ['measured','predicted']){
+     const link=document.querySelector('#formation-download-'+variant);
+     link.hidden=state!=='ready'||(variant==='predicted'&&!savedJob?.prediction);
+     if(link.hidden)link.removeAttribute('href');
+     else link.href=route+'/video'+query+'&download=1&variant='+variant+'&revision='+encodeURIComponent(savedJob.revision);
+   }
    tools.hidden=!toggle.checked&&!state&&!picking;
    exportPrediction.hidden=!predict.checked||picking||state!=='ready'||savedJob?.prediction===true;
    exportPrediction.disabled=sending;

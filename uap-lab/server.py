@@ -15,7 +15,7 @@ class StationHTTPServer(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     def json(self,value,status=200):
         data=json.dumps(value).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(data)
-    def file(self,path,mime=None):
+    def file(self,path,mime=None,download_name=None):
         if not path.is_file():self.send_error(404);return
         size=path.stat().st_size;start,end=0,size-1;partial=False
         value=self.headers.get('Range')
@@ -28,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(416);self.send_header('Content-Range',f'bytes */{size}');self.send_header('Content-Length','0');self.end_headers();return
             partial=True
         self.send_response(206 if partial else 200);self.send_header('Content-Type',mime or mimetypes.guess_type(path.name)[0] or 'application/octet-stream');self.send_header('Accept-Ranges','bytes');self.send_header('Content-Length',str(end-start+1));self.send_header('X-Content-Type-Options','nosniff')
+        if download_name:
+            self.send_header('Content-Disposition',f'attachment; filename="{download_name}"')
         if partial:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
         self.end_headers()
         with path.open('rb') as f:
@@ -69,6 +71,18 @@ class Handler(BaseHTTPRequestHandler):
                 import formation_overlay as overlay
                 key=q['id'][0]
                 result=overlay.status(lab.DATA,key)
+                if p.endswith('/video') and q.get('download')==['1']:
+                    base=overlay.folder(lab.DATA,key)
+                    revision=q.get('revision',[result.get('revision','')])[0]
+                    if not re.fullmatch('[a-f0-9]{32}',revision):
+                        self.send_error(404);return
+                    job=base/revision
+                    variant=q.get('variant',['measured'])[0]
+                    names={'measured':'formation-overlay','predicted':'formation-predicted'}
+                    if variant not in names or overlay.read(job/'status.json').get('state')!='ready':
+                        self.send_error(404);return
+                    name=names[variant]
+                    self.file(job/(name+'.mp4'),'video/mp4',download_name=f'{key}-{name}.mp4');return
                 if p.endswith(('/tracks','/video')):
                     if result.get('state')!='ready':raise ValueError('Overlay is still preparing')
                     job=overlay.folder(lab.DATA,key)/result['revision']
