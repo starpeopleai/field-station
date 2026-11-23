@@ -429,6 +429,9 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/training-control/start':
                 from auto_training.manual_training import Control
                 self.json(Control().request(value.get("ranking_measure","false_positive_rate")));return
+            if p.path=='/api/objects/pin':
+                from review_pins import update
+                self.json(update(lab.DATA,value));return
             if p.path=='/api/objects/star':
                 from detection_actions import set_star
                 self.json(set_star(lab.DATA,value));return

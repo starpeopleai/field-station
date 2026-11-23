@@ -36,6 +36,29 @@
   image.addEventListener('click',event=>{if(!failed)return;event.preventDefault();event.stopImmediatePropagation();attempts=0;retry();},true);
   image.append(img,status);img.src=url;
  }
+ function pinButton(row){
+  const button=el('button',row.pinned_at?'Unpin':'Pin');button.type='button';button.className='review-pin';
+  button.setAttribute('aria-pressed',String(!!row.pinned_at));
+  let submitting=false;
+  button.onclick=async event=>{
+   event.stopPropagation();if(submitting)return;
+   submitting=true;button.disabled=true;
+   try{
+    const result=await api('/api/objects/pin',{id:row.id,pinned:!row.pinned_at});
+    row.pinned_at=result.pinned_at;button.textContent=row.pinned_at?'Unpin':'Pin';button.setAttribute('aria-pressed',String(!!row.pinned_at));
+    const grid=$('detectionQueue'),node=button.closest('article');
+    if(node?.parentNode===grid){
+     const next=[...grid.children].find(n=>{
+      const other=rows.get(n.dataset.id);if(!other||other.id===row.id)return false;
+      return (other.pinned_at||0)<row.pinned_at||((other.pinned_at||0)===row.pinned_at&&(other.created<row.created||other.created===row.created&&other.id<row.id));
+     });
+     grid.insertBefore(node,next||null);
+    }
+    notice(row.pinned_at?'Pinned to top.':'Pin removed.');
+   }catch(error){notice('Pin needs attention: '+error.message);}
+   finally{submitting=false;button.disabled=false;}
+  };return button;
+ }
  function manualCard(row){
   const n=el('article');n.className='detection-card manual-recording-card';n.dataset.id=row.id;
   const heading=el('h2',new Date(row.created*1000).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}));
@@ -48,6 +71,7 @@
    remove.onclick=async()=>{if(!confirm('Delete this manual recording and remove its Internet Archive upload? Saved training frames and labels will remain.'))return;remove.disabled=true;deleting.add(row.id);try{const result=await api('/api/manual-recordings/delete',{session_id:row.session_id});row.deletion=result;const replacement=manualCard(row);n.replaceWith(replacement);notice('Deletion requested. Internet Archive removal will retry automatically until confirmed.');}catch(error){remove.disabled=false;notice('Delete needs attention: '+error.message);}finally{deleting.delete(row.id);}};
    n.append(remove);
   }
+  if(window.FIELD_PUBLIC_READ_ONLY!==true)n.append(pinButton(row));
   if(row.video_url){const video=el('video');video.controls=true;video.playsInline=true;video.preload='none';video.src=row.video_url;video.setAttribute('aria-label','Manual recording from '+heading.textContent);n.append(video);const download=el('a','Download video');download.href=row.video_url;download.download=row.session_id+'.mp4';n.append(download);}
   else n.append(el('p',row.state==='recording'?'Video will be available when recording stops.':row.state==='failed'?'Original footage is retained.':'Preparing the full-quality video…'));
   if(row.review_url){const link=el('a','Review video');link.href=row.review_url;n.append(link);}
@@ -75,7 +99,7 @@
   const image=el('button');image.className='detection-image';image.type='button';image.setAttribute('aria-label','Select '+pretty(row.label)+' object');thumbnail(image,row.image_url,pretty(row.label)+' detected object');image.onclick=e=>{select(row.id,e);n.classList.toggle('controls-open');};
   const actions=el('div');actions.className='category-actions';const grid=el('div');grid.className='category-grid';
   for(const label of ['anomalous','not_anomalous']){const b=el('button',pretty(label));b.type='button';b.setAttribute('aria-label','Label as '+pretty(label));b.onclick=()=>enqueue(row,label);grid.append(b);}
-  const links=el('div');links.className='review-actions';const inspect=el('button','Inspect frame');inspect.onclick=()=>{$('queueFrameBox').hidden=true;$('queueFullFrame').onload=()=>{const b=row.frame_bounds,img=$('queueFullFrame'),box=$('queueFrameBox');if(!b)return;Object.assign(box.style,{left:(img.offsetLeft+b.x*img.clientWidth)+'px',top:(img.offsetTop+b.y*img.clientHeight)+'px',width:(b.w*img.clientWidth)+'px',height:(b.h*img.clientHeight)+'px'});box.hidden=false;};$('queueFullFrame').src=row.frame_url;$('queueVideoLink').hidden=!row.review_url;if(row.review_url)$('queueVideoLink').href=row.review_url;$('queueFrame').showModal();};links.append(inspect);
+  const links=el('div');links.className='review-actions';if(window.FIELD_PUBLIC_READ_ONLY!==true)links.append(pinButton(row));const inspect=el('button','Inspect frame');inspect.onclick=()=>{$('queueFrameBox').hidden=true;$('queueFullFrame').onload=()=>{const b=row.frame_bounds,img=$('queueFullFrame'),box=$('queueFrameBox');if(!b)return;Object.assign(box.style,{left:(img.offsetLeft+b.x*img.clientWidth)+'px',top:(img.offsetTop+b.y*img.clientHeight)+'px',width:(b.w*img.clientWidth)+'px',height:(b.h*img.clientHeight)+'px'});box.hidden=false;};$('queueFullFrame').src=row.frame_url;$('queueVideoLink').hidden=!row.review_url;if(row.review_url)$('queueVideoLink').href=row.review_url;$('queueFrame').showModal();};links.append(inspect);
   if(row.review_url){const link=el('a','Review video');link.href=row.review_url;if(row.kind==='review'&&row.sample_id){const url=new URL(link.href);url.searchParams.set('sample',row.sample_id);link.href=url.href;}links.append(link);}
   const archive=/^https:\/\/archive\.org\/details\/[A-Za-z0-9_.-]+$/.test(row.archive_url||'')?el('a','View archived bundle'):null;
   if(archive){archive.href=row.archive_url;archive.target='_blank';archive.rel='noopener noreferrer';links.append(archive);}
