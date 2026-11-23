@@ -111,3 +111,14 @@ body.live-mode.hide-camera-chrome #stationNotifications,
 body.live-mode.hide-camera-chrome #liveViewer > :not(#liveStage):not(#noSignalCard) {
   display: none !important;
 }
+
+button.station-action-relative { position:relative }
+button.station-action-pending.station-action-pending { color:transparent!important; text-shadow:none!important }
+button.station-action-pending > * { visibility:hidden }
+button.station-action-pending::after {
+ content:""; position:absolute; inset:0; margin:auto; box-sizing:border-box;
+ width:.95em; height:.95em; border:2px solid var(--ink,CanvasText);
+ border-right-color:transparent; border-radius:50%; animation:station-action-spin .65s linear infinite;
+}
+@keyframes station-action-spin { to { transform:rotate(360deg) } }
+@media(prefers-reduced-motion:reduce){button.station-action-pending::after{animation:none}}

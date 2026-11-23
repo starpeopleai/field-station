@@ -306,3 +306,51 @@
 
 // Aircraft radar and private center settings.
 if(window.FIELD_PUBLIC_READ_ONLY!==true){const script=document.createElement("script");script.src="/air-traffic.js?v=1";document.head.append(script);}
+
+// Keep the original label in the accessibility tree and preserve the button's width.
+(() => {
+ const running = new WeakSet(), indications = new WeakMap();
+ document.addEventListener('click', event => {
+  const button = event.target.closest?.('button');
+  if (!button || button.disabled) return;
+  if (running.has(button)) {
+   event.preventDefault();
+   event.stopImmediatePropagation();
+   return;
+  }
+  const handler = button.onclick;
+  const earlier = indications.get(button);
+  const indication = {previousBusy: earlier ? earlier.previousBusy : button.getAttribute('aria-busy')};
+  indications.set(button,indication);
+  if(getComputedStyle(button).position==='static')button.classList.add('station-action-relative');
+  button.classList.add('station-action-pending');
+  button.setAttribute('aria-busy','true');
+  const minimum = new Promise(resolve => setTimeout(resolve,200));
+  let work;
+  if (handler) {
+   const invoke = function(e) {
+    button.onclick = handler;
+    const result = handler.call(this,e);
+    if (result && typeof result.then === 'function') {
+     running.add(button);
+     work = Promise.resolve(result);
+    }
+    return result;
+   };
+   button.onclick = invoke;
+   setTimeout(() => { if (button.onclick === invoke) button.onclick = handler; },0);
+  }
+  // DOM event dispatch completes before a timer, including keyboard activation.
+  setTimeout(async () => {
+   try { await Promise.allSettled([minimum,work]); }
+   finally {
+    if(indications.get(button)!==indication)return;
+    indications.delete(button);running.delete(button);
+    const {previousBusy}=indication;
+    button.classList.remove('station-action-pending','station-action-relative');
+    if(previousBusy===null)button.removeAttribute('aria-busy');
+    else button.setAttribute('aria-busy',previousBusy);
+   }
+  },0);
+ },true);
+})();

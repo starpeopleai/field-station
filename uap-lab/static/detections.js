@@ -92,7 +92,7 @@
   if(counts&&!indexing){for(const [key]of views)if(Number.isFinite(counts[key]))tabCounts[key]=counts[key];completeCounts=true;}
   window.REVIEW_FILTERS.render(filters,indexing,sources,counts);
  }
- window.addEventListener('review-filter-change',()=>{view=window.REVIEW_FILTERS.view();dismissed.clear();void reset();});
+ window.addEventListener('review-filter-change',event=>{view=window.REVIEW_FILTERS.view();dismissed.clear();event.detail.completion=reset();});
 
  let refreshFailed=false;
  async function refresh(countsOnly=false){
@@ -116,9 +116,9 @@
    cursor=data.next_cursor||'';more=!!cursor;$('moreDetections').hidden=!more;$('queueEmpty').hidden=rows.size>0;selection();
   }catch(e){if(rev===version){if(!refreshFailed&&!pending.size)notice(e.message);refreshFailed=true;}}finally{if(rev===version)loading=false;}
  }
- async function reset(){version++;loading=false;cursor='';more=true;rows.clear();selected.clear();anchor=null;$('detectionQueue').replaceChildren();renderTabs(undefined,true);selection();await load();}
+ async function reset(){window.REVIEW_FILTERS.showClips([]);version++;loading=false;cursor='';more=true;rows.clear();selected.clear();anchor=null;$('detectionQueue').replaceChildren();renderTabs(undefined,true);selection();await load();}
  async function load(){if(loading||!more)return;loading=true;const rev=version;$('moreDetections').disabled=true;
-  try{const data=await api('/api/objects?'+window.REVIEW_FILTERS.query(cursor));if(rev!==version)return;if(data.index_error&&data.ready===false)notice('Could not load detections: '+data.index_error);cursor=data.next_cursor||'';more=!!cursor;renderTabs(data.counts,(data.counts_indexing??data.indexing)||data.ready===false,data.filter_counts,data.source_counts);
+  try{const data=await api('/api/objects?'+window.REVIEW_FILTERS.query(cursor));if(rev!==version)return;window.REVIEW_FILTERS.showClips(data.capture_clips||[]);if(data.index_error&&data.ready===false)notice('Could not load detections: '+data.index_error);cursor=data.next_cursor||'';more=!!cursor;renderTabs(data.counts,(data.counts_indexing??data.indexing)||data.ready===false,data.filter_counts,data.source_counts);
    for(const row of data.items)if(!rows.has(row.id)&&!deletedIds.has(row.id)&&!saving(row.id)&&!dismissed.has(row.id)){rows.set(row.id,row);$('detectionQueue').append(card(row));}
    $('queueStatus').textContent=data.ready===false?(data.index_error?'Library could not be loaded: '+data.index_error:'Loading the object library…'):(data.indexing?'Updating library…':'');$('queueEmpty').hidden=rows.size>0||data.ready===false||data.indexing;if(data.ready===false&&data.indexing)setTimeout(()=>{if(rev===version)refresh();},2000);$('moreDetections').hidden=!more;for(const item of pending.values())if(item.failed)restore(item);selection();if(!rows.size&&more)setTimeout(load,0);
   }catch(e){if(rev===version)notice(e.message);}finally{if(rev===version){loading=false;$('moreDetections').disabled=false;}}
