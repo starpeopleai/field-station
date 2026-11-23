@@ -1,4 +1,5 @@
 """Private station preferences, persisted on the capture volume."""
+import detection_zone
 import fcntl,time
 from pathlib import Path
 from retired_data import read,save
@@ -12,14 +13,16 @@ def settings(root):
  from station_location import location_at
  from negative_backlog import policy as negative_policy
  negative=negative_policy(Path(root)/'uap-lab')
- return dict(observation_location=location_at(root),negative_backlog_enabled=negative['enabled'],negative_backlog_limit=negative['max_items'],daytime_auto_cleanup=value.get('daytime_auto_cleanup') is True,after_seconds=delay,timezone='America/Los_Angeles',daytime_only=True)
+ return dict(**detection_zone.settings(value),observation_location=location_at(root),negative_backlog_enabled=negative['enabled'],negative_backlog_limit=negative['max_items'],daytime_auto_cleanup=value.get('daytime_auto_cleanup') is True,after_seconds=delay,timezone='America/Los_Angeles',daytime_only=True)
 
 def policy(root):
  value=settings(root)
  return dict(enabled=value['daytime_auto_cleanup'],after_seconds=value['after_seconds'])
 
 def update(root,value):
- if not isinstance(value,dict) or not value or set(value)-{'daytime_auto_cleanup','after_seconds','negative_backlog_enabled','negative_backlog_limit'}:raise ValueError('Invalid cleanup settings.')
+ if not isinstance(value,dict) or not value or set(value)-{'zone_enabled','zone_bounds','daytime_auto_cleanup','after_seconds','negative_backlog_enabled','negative_backlog_limit'}:raise ValueError('Invalid cleanup settings.')
+ if 'zone_enabled' in value and type(value['zone_enabled']) is not bool:raise ValueError('Invalid detection zone toggle.')
+ if 'zone_bounds' in value and not detection_zone.valid(value['zone_bounds']):raise ValueError('Choose a rectangle inside the camera frame.')
  if 'negative_backlog_limit' in value and (type(value['negative_backlog_limit']) is not int or value['negative_backlog_limit'] not in NEGATIVE_LIMITS):raise ValueError('Choose 250, 500, 1,000, 2,500, or 5,000 frames.')
  if 'negative_backlog_enabled' in value and type(value['negative_backlog_enabled']) is not bool:raise ValueError('Choose whether the non-anomalous review limit is enabled.')
  if 'daytime_auto_cleanup' in value and type(value['daytime_auto_cleanup']) is not bool:raise ValueError('Choose whether daytime auto-cleanup is enabled.')
