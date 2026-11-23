@@ -10,10 +10,10 @@
  let picking=false,points=[],anchor=null,tracks=[],revision='',timer,state='',sending=false;
  controls.hidden=false;controls.style.display='';
  function buttons(){
-   tools.hidden=!toggle.checked;
+   tools.hidden=!toggle.checked&&!state&&!picking;
    exportPrediction.hidden=!predict.checked||picking||state!=='ready'||savedJob?.prediction===true;
    exportPrediction.disabled=sending;
-   edit.hidden=picking;undo.hidden=save.hidden=!picking;
+   edit.hidden=picking||!toggle.checked;undo.hidden=!picking||!toggle.checked;save.hidden=!picking;
    undo.disabled=!points.length||sending;save.disabled=points.length<2||sending;
  }
  function stopPicking(){picking=false;points=[];anchor=null;buttons();}
@@ -26,18 +26,21 @@
    clearTimeout(timer);
    try{
      const response=await fetch(route+query,{cache:'no-store'});if(!response.ok)throw Error('Could not load the overlay.');
-     const job=await response.json();state=job.state||'';savedJob=job;buttons();
-     if(state==='ready'&&revision!==job.revision){
+     const job=await response.json();state=job.state||'';if(!savedJob&&job.prediction)predict.checked=true;savedJob=job;buttons();
+     if(toggle.checked&&state==='ready'&&revision!==job.revision){
        const r=await fetch(route+'/tracks'+query+'&predict=1&v='+job.revision);if(!r.ok)throw Error('Could not load the tracks.');
        const payload=await r.json();tracks=payload.tracks;estimates=payload.predictions||[];revision=job.revision;draw();
      }
-     if(toggle.checked&&!picking)message.textContent=state==='error'?job.error:state==='ready'?(predict.checked?'Dashed lines and diamonds indicate predicted positions.':'Tracked lights · image-plane positions'):state?'Tracking lights…':'';
+     if(!toggle.checked)message.textContent=picking?'Selected points retained.':state==='ready'?'Formation saved · overlay hidden':state==='error'?job.error:state?'Tracking lights…':'';
+     else if(!picking)message.textContent=state==='error'?job.error:state==='ready'?(predict.checked?'Dashed lines and diamonds indicate predicted positions.':'Tracked lights · image-plane positions'):state?'Tracking lights…':'';
      if(state==='queued'||state==='tracking')timer=setTimeout(refresh,3000);
    }catch(e){if(toggle.checked)message.textContent=e.message;timer=setTimeout(refresh,5000);}
  }
  toggle.onchange=async()=>{
-   stopPicking();message.textContent='';draw();
-   if(toggle.checked){await refresh();if(toggle.checked&&(!state||state==='error'))pick();}
+   buttons();draw();
+   await refresh();
+   if(toggle.checked&&picking)instructions();
+   else if(toggle.checked&&(!state||state==='error'))pick();
  };
  predict.onchange=()=>{buttons();draw();if(!picking)refresh();};
  exportPrediction.onclick=async()=>{
@@ -97,5 +100,5 @@
    });
    ctx.restore();return picking;
  };
- buttons();
+ buttons();refresh();
 })();
