@@ -13,7 +13,10 @@ def attach(data,rows):
   kind=parts[0]
   receipt=read(root/(kind+'-'+parts[1]+'.json'),{})
   identifier=receipt.get('identifier','')
-  if receipt.get('verified') and parts[2] in receipt.get('samples',[]) and re.fullmatch('[A-Za-z0-9_-]+',identifier):
+  frame='frames/'+parts[2]+'.png'
+  files=receipt.get('files',{})
+  covered=parts[2] in receipt.get('samples',[]) or frame in files or 'starred/'+parts[1]+'/'+frame in files
+  if receipt.get('verified') and covered and re.fullmatch('[A-Za-z0-9_-]+',identifier):
    row['archive_url']='https://archive.org/details/'+identifier
    row['archive_bundle_url']='https://archive.org/compress/'+identifier
  selected=[r for r in rows if not r.get('archive_url') and r.get('human_reviewed') and r.get('label')=='anomalous']
