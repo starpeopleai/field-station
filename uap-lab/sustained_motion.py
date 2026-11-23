@@ -97,6 +97,10 @@ def index_session(data,event):
     with closing(sqlite3.connect(Path(data)/'sustained-sessions.sqlite3',timeout=10)) as db,db:
         db.execute('CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,generation TEXT,start REAL,end REAL)')
         db.execute('CREATE INDEX IF NOT EXISTS by_generation ON sessions(generation,start)')
+        db.execute('CREATE TABLE IF NOT EXISTS capture_windows(id TEXT PRIMARY KEY,start REAL,end REAL)')
+        db.execute('CREATE INDEX IF NOT EXISTS by_end ON capture_windows(end)')
+        anchor=event['frame_epoch']-event['onset_pts']
+        db.execute('INSERT OR REPLACE INTO capture_windows VALUES(?,?,?)',(event['session_id'],anchor+event['start_pts'],anchor+event['end_pts']))
         db.execute('INSERT OR REPLACE INTO sessions VALUES(?,?,?,?)',(event['session_id'],event['generation'],event['start_pts'],event['end_pts']))
 
 def playback_url(data,station,event):
@@ -108,3 +112,16 @@ def playback_url(data,station,event):
     for sid, in records:
         if (Path(station)/'sessions'/sid/'video.mp4').is_file():
             return '/api/live/artifact?session='+sid+'&name=video.mp4'
+
+def clips_in_range(data,station,start,end):
+    path=Path(data)/'sustained-sessions.sqlite3'
+    if not path.is_file():
+        return []
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='capture_windows'").fetchone():
+            return []
+        rows=db.execute('SELECT id,start,end FROM capture_windows WHERE end>=? AND start<? ORDER BY start DESC',
+                        (start if start is not None else float('-inf'),end+1 if end is not None else float('inf')))
+        return [dict(title='Play continuous recording · '+str(round(b-a))+' s',
+                     url='/api/live/artifact?session='+sid+'&name=video.mp4') for sid,a,b in rows
+                if (Path(station)/'sessions'/sid/'video.mp4').is_file()]

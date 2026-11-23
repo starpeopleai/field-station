@@ -102,7 +102,9 @@ class Handler(BaseHTTPRequestHandler):
                 lease_videos(lab.DATA,[r['id'] for r in value.get('items',[]) if r.get('kind')=='detection'])
                 if q.get('captured_from') or q.get('captured_to'):
                     from capture_time_filter import bounds,matching_clips
-                    value['capture_clips']=matching_clips(lab.DATA,*bounds(q.get('captured_from',[None])[0],q.get('captured_to',[None])[0]))
+                    from sustained_motion import clips_in_range
+                    limits=bounds(q.get('captured_from',[None])[0],q.get('captured_to',[None])[0])
+                    value['capture_clips']=clips_in_range(lab.DATA,lab.STATION,*limits)+matching_clips(lab.DATA,*limits)
                 self.json(decorate(lab.DATA,value));return
             if p in ('/tracks','/labels'):
                 self.send_response(302);self.send_header('Location','/label-videos');self.send_header('Content-Length','0');self.end_headers();return
