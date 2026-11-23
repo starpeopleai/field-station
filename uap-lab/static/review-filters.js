@@ -6,18 +6,20 @@
  for(const [key,values]of [['classification',['all','anomalous','not_anomalous']],['review_status',['all','needs_review','human_reviewed']]])if(values.includes(params.get(key)))state[key]=params.get(key);
  const sidebar=document.getElementById('objectViews'),main=sidebar.closest('main'),layout=document.createElement('div'),content=document.createElement('div'),controls=new Map();layout.className='review-layout';content.className='review-content';sidebar.className='review-sidebar';sidebar.setAttribute('aria-label','Detection filters');sidebar.replaceChildren();for(const node of [...main.childNodes])if(node!==sidebar)content.append(node);layout.append(sidebar,content);main.append(layout);
  const timeRange={};
- const timeField=document.createElement('fieldset'),timeLegend=document.createElement('legend');
- timeLegend.textContent='Capture time ('+Intl.DateTimeFormat().resolvedOptions().timeZone+')';timeField.append(timeLegend);
+ const timeField=document.createElement('details'),timeLegend=document.createElement('summary'),timeFields=document.createElement('div');
+ timeField.className='review-time';timeFields.className='time-fields';
+ timeLegend.textContent='Capture time';timeField.append(timeLegend,timeFields);
+ const zone=new Intl.DateTimeFormat(undefined,{timeZoneName:'short'}).formatToParts(new Date(Number(params.get('captured_from')||params.get('captured_to')||Date.now()/1000)*1000)).find(p=>p.type==='timeZoneName')?.value;
  const inputs={};
  for(const [key,title] of [['captured_from','From'],['captured_to','Through']]){
   const label=document.createElement('label'),input=document.createElement('input');
-  input.type='datetime-local';input.step='1';label.textContent=title;label.style.display='grid';
+  input.type='datetime-local';input.step='1';label.textContent=title+(zone?' ('+zone+')':'');
   const value=params.get(key);
   if(value && Number.isFinite(Number(value))){
    const d=new Date(Number(value)*1000);
    if(Number.isFinite(d.getTime())){input.value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,19);timeRange[key]=value;}
   }
-  inputs[key]=input;label.append(input);timeField.append(label);
+  inputs[key]=input;label.append(input);timeFields.append(label);
  }
  const apply=document.createElement('button'),clearTime=document.createElement('button');
  apply.type=clearTime.type='button';apply.textContent='Apply';clearTime.textContent='Clear';
@@ -29,7 +31,7 @@
   change();
  };
  clearTime.onclick=()=>{for(const [key,input] of Object.entries(inputs)){delete timeRange[key];input.value='';input.setCustomValidity('');}change();};
- timeField.append(apply,clearTime);sidebar.append(timeField);
+ const actions=document.createElement('div');actions.className='time-actions';clearTime.className='clear-time';actions.append(apply,clearTime);timeField.append(actions);timeField.open=Object.keys(timeRange).length>0;sidebar.append(timeField);
 
  function change(){const query=new URLSearchParams({...timeRange,classification:state.classification,review_status:state.review_status});if(state.starred)query.set('view','starred');if(state.manual)query.set('view','manual_recordings');syncSource();history.replaceState(null,'','/label-videos?'+query);window.dispatchEvent(new Event('review-filter-change'));}
  for(const [key,title,options]of [['review_status','Review status',[['needs_review','Machine-only review'],['human_reviewed','Human-reviewed'],['all','All']]],['classification','Classification',[['all','Both'],['anomalous','Anomalous'],['not_anomalous','Not anomalous']]]]){const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=title;field.append(legend);for(const [value,text]of options){const label=document.createElement('label'),input=document.createElement('input'),name=document.createElement('span'),count=document.createElement('span');input.type='radio';input.name=key;input.value=value;input.checked=state[key]===value;name.textContent=text;count.className='tab-count';count.textContent='…';input.addEventListener('change',()=>{if(input.checked){state[key]=value;change();}});label.append(input,name,count);field.append(label);controls.set(key+':'+value,count);}sidebar.append(field);}
