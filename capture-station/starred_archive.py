@@ -150,13 +150,22 @@ def main():
         previous = read(receipt, {})
         try:
             extra = extras.get(event, {})
-            signature = hashlib.sha256(json.dumps([samples, extra], sort_keys=True).encode()).hexdigest()
+            from starred_trim import request_path
+            trims = {asset: read(request_path(data,event,asset), {}) for asset in ('review.mp4',*extra)}
+            trims = {asset: r for asset,r in trims.items() if r.get('revision')}
+            revisions = {asset:r['revision'] for asset,r in trims.items()}
+            signature = hashlib.sha256(json.dumps([samples, extra, revisions] if revisions else [samples, extra], sort_keys=True).encode()).hexdigest()
             if previous.get('signature') == signature and previous.get('verified') and time.time()-previous['checked'] < 86400:
                 continue
             existing = existing_item(data, event, samples, groups)
             identifier = previous.get('identifier') or existing or ('starpeople-field-starred-' + kind + '-' + event)
             with tempfile.TemporaryDirectory(dir=state) as tmp:
                 files, manifest = evidence(data, kind, event, samples, extra)
+                if trims:
+                    manifest['video_trims'] = trims
+                    for asset,request in trims.items():
+                        if request.get('enabled'):
+                            files[asset] = request_path(data,event,asset).parent / (request['revision']+'.mp4')
                 manifest['available_files'] = sorted(files)
                 sidecar = Path(tmp) / 'starred.json'
                 sidecar.write_text(json.dumps(manifest, sort_keys=True))
@@ -170,7 +179,7 @@ def main():
                 checkpoint()
                 verified = publish(api, identifier, files, checks, not identifier.startswith('starpeople-field-starred-'), acknowledged, checkpoint)
                 save(receipt, dict(signature=signature, identifier=identifier, verified=verified, checked=time.time(),
-                                   state='verified' if verified else 'awaiting_index', files=checks, samples=sorted(samples), acknowledged=acknowledged))
+                                   state='verified' if verified else 'awaiting_index', files=checks, samples=sorted(samples), acknowledged=acknowledged, trim_revisions=revisions))
         except Exception as exc:
             value = read(receipt, {})
             value.update(verified=False, state='retry', error=str(exc)[:400])
