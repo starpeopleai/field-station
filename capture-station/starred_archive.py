@@ -87,7 +87,12 @@ def evidence(data, kind, event, samples, extra):
             except (OSError, ValueError, RuntimeError):
                 pass  # Available frames can be published while the video is recovered.
         if clip.is_file():
-            files['review.mp4'] = clip
+            first_excerpt = pinned.parent / 'initial-excerpt.mp4'
+            if first_excerpt.is_file():
+                files['review.mp4'] = first_excerpt
+                files['review-extended.mp4'] = clip
+            else:
+                files['review.mp4'] = clip
     else:
         from detection_actions import object_folder
         _, _, folder = object_folder(data, ':'.join((kind, event, next(iter(samples)))))
