@@ -139,8 +139,10 @@ class Handler(BaseHTTPRequestHandler):
                 data=data.encode();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
             if p=='/api/training-history':self.json(lab.read(lab.DATA/'provisional-training/history.json',{}));return
             if p=='/api/email-review':
+                from sustained_motion import playback_url
                 from email_review import detail,prepare
                 key=q['id'][0];info=detail(lab.DATA,key)
+                info['continuous_video_url']=playback_url(lab.DATA,lab.STATION,info['event'])
                 from detection_actions import stars
                 prefix='review:'+key+':'
                 info['starred_samples']=[k[len(prefix):] for k in stars(lab.DATA) if k.startswith(prefix)]
