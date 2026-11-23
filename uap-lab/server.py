@@ -102,7 +102,9 @@ class Handler(BaseHTTPRequestHandler):
                 lease_videos(lab.DATA,[r['id'] for r in value.get('items',[]) if r.get('kind')=='detection'])
                 if q.get('captured_from') or q.get('captured_to'):
                     from capture_time_filter import bounds,matching_clips
-                    value['capture_clips']=matching_clips(lab.DATA,*bounds(q.get('captured_from',[None])[0],q.get('captured_to',[None])[0]))
+                    from sustained_motion import clips_in_range
+                    limits=bounds(q.get('captured_from',[None])[0],q.get('captured_to',[None])[0])
+                    value['capture_clips']=clips_in_range(lab.DATA,lab.STATION,*limits)+matching_clips(lab.DATA,*limits)
                 self.json(decorate(lab.DATA,value));return
             if p in ('/tracks','/labels'):
                 self.send_response(302);self.send_header('Location','/label-videos');self.send_header('Content-Length','0');self.end_headers();return
@@ -139,8 +141,10 @@ class Handler(BaseHTTPRequestHandler):
                 data=data.encode();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
             if p=='/api/training-history':self.json(lab.read(lab.DATA/'provisional-training/history.json',{}));return
             if p=='/api/email-review':
+                from sustained_motion import playback_url
                 from email_review import detail,prepare
                 key=q['id'][0];info=detail(lab.DATA,key)
+                info['continuous_video_url']=playback_url(lab.DATA,lab.STATION,info['event'])
                 from detection_actions import stars
                 prefix='review:'+key+':'
                 info['starred_samples']=[k[len(prefix):] for k in stars(lab.DATA) if k.startswith(prefix)]

@@ -42,6 +42,8 @@ def read_index(folder,offset):
 
 def run(config,output,stop,start_segment=None,stop_segment=None):
  output.mkdir(parents=True,exist_ok=True);root=Path(config['spool']);policy=read(Path(config['policy']));base_policy=policy;cv2.setNumThreads(int(config.get('motion_threads',2)))
+ from sustained_motion import SustainedMotion
+ sustained=SustainedMotion(root) if config.get("event_owner") and stop_segment is None else None
  sink=None
  alerts=AlertOutbox(config['alert_outbox'],config.get('alert_not_before_epoch',0)) if config.get('alert_outbox') and stop_segment is None else None
  cv2.setNumThreads(int(config.get('motion_threads',2)))
@@ -84,6 +86,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
   nonlocal uncommitted,last_checkpoint
   checkpoint_started=time.perf_counter()
   state.update(tracks=tracker.tracks,track_serial=tracker.serial)
+  if sustained:sustained.checkpoint()
   if sink:sink.flush()
   future=store.commit(state,detector.background);pin();uncommitted=0;last_checkpoint=time.monotonic();stages['checkpoint']+=time.perf_counter()-checkpoint_started
   return future
@@ -92,6 +95,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
   row,future=pending.popleft();wait_started=time.perf_counter();results=future.result();stages['classification_wait']+=time.perf_counter()-wait_started
   if any('error' in result for result in results):raise ValueError('Object classification failed; source retained for retry')
   indices=row.pop('classification_indices');apply_results(row['observations'],indices,results,policy)
+  if sustained:sustained.update(state['generation'],row,state['model'])
   crops=row.pop('alert_crops',[])
   if alerts:alerts.submit(state['generation'],row,indices,crops)
   row.pop('alert_frame',None);row.pop('alert_color_source',None)
@@ -115,6 +119,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
       # EOF may have been read just before capture appended its final segment.
       final_line,_,_=read_index(folder,state['offset'])
       if final_line.endswith(b'\n'):continue
+      if sustained:sustained.finish(True)
       created=read(folder/'generation.json')['created_epoch'];later=sorted((read(p/'generation.json')['created_epoch'],p.name) for p in root.glob('run-*') if (p/'generation.json').exists() and read(p/'generation.json')['created_epoch']>created)
       if later:
        checkpoint().result();pin() # Acknowledge the closed generation before replacing its cursor.
