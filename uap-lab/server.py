@@ -147,6 +147,16 @@ class Handler(BaseHTTPRequestHandler):
                 info['continuous_video_url']=playback_url(lab.DATA,lab.STATION,info['event'])
                 from starred_trim import context_editor
                 info['continuous_trim_url']=context_editor(lab.DATA,key)
+                asset=q.get('asset',[''])[0]
+                if asset:
+                    from starred_trim import binding
+                    from review_playback import frame_times
+                    source=binding(lab.DATA,key,asset)
+                    if source is None:raise ValueError('Recording unavailable')
+                    times=sorted(frame_times(source))
+                    if not times:raise ValueError('Recording has no video frames')
+                    info['clip']=dict(state='ready',frame_times=times,event_time=times[0])
+                    info['annotations']=[]
                 from detection_actions import stars
                 prefix='review:'+key+':'
                 info['starred_samples']=[k[len(prefix):] for k in stars(lab.DATA) if k.startswith(prefix)]
@@ -157,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
                     threading.Thread(target=build,daemon=True).start()
                 self.json(dict(info,token=TOKEN));return
             if p=='/trim-recording':
-                self.file(lab.Path(__file__).parent/'static/starred-trim.html','text/html; charset=utf-8');return
+                self.send_response(302);self.send_header('Location','/review-detection?'+url.query);self.end_headers();return
             if p=='/api/email-review/trim/source':
                 from starred_trim import binding
                 source=binding(lab.DATA,q['id'][0],q['asset'][0])
@@ -167,7 +177,8 @@ class Handler(BaseHTTPRequestHandler):
                 from video_trim import download
                 from starred_trim import binding,output
                 key=q['id'][0]
-                target=output(lab.DATA,key) if binding(lab.DATA,key) else download(lab.DATA,key)
+                asset=q.get('asset',['review.mp4'])[0]
+                target=output(lab.DATA,key,asset) if binding(lab.DATA,key,asset) else download(lab.DATA,key)
                 if isinstance(target,str):
                     self.send_response(302);self.send_header('Location',target);self.end_headers();return
                 self.file(target,'video/mp4');return

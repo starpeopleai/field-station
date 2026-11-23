@@ -26,6 +26,9 @@ def plan(archive,job,manifest):
  anomalous=approval.get('classification')=='anomalous' or decision.get('confirmed_anomalous') is True
  job.update(manual_scope=True,manual_revision=rev,manual_priority_epoch=max(manifest.get('stopped_epoch',0),decision.get('reviewed_epoch',0)),custom_tags=normalize([*tags,'manual-recording',*(['anomalous'] if anomalous else [])]),ce5_playback=overlap(archive.data.parent,manifest))
  names=['video.mp4','air-traffic.json','rf.jsonl','capture.log','capture-progress.txt','buffer-state.json','motion-events.json','rf-trigger-events.json','manual-archive-approval.json']
+ trim=load(folder/'video-trim.json',{})
+ if trim.get('enabled'):
+  names+=['video.mkv','video-trimmed.mp4'] if trim.get('video')=='video-trimmed.mp4' else ['video.mkv']
  if rev!='baseline':names+=['video-annotated.mp4','review-annotations.json','archive-decision.json','review-trim.json','video-trim.json','frames/reviewed-index.json']
  files=[];stats={}
  old={e['name']:e for e in previous};old_stats=job.get('source_signatures',{})
@@ -41,7 +44,7 @@ def plan(archive,job,manifest):
  for name in names:
   path=folder/name
   if not path.exists():
-   if name=='video.mp4' or (rev!='baseline' and name in ('video-annotated.mp4','review-annotations.json','frames/reviewed-index.json')):raise ValueError('Manual recording evidence not ready: '+name)
+   if name in ('video.mp4','video.mkv','video-trimmed.mp4') or (rev!='baseline' and name in ('video-annotated.mp4','review-annotations.json','frames/reviewed-index.json')):raise ValueError('Manual recording evidence not ready: '+name)
    continue
   if path.is_symlink() or not path.is_file():raise ValueError('Unsafe manual recording evidence')
   stamp=signature(path)
@@ -87,7 +90,7 @@ def plan(archive,job,manifest):
  files.append(dict(name='session.json',private_source=snapshot.name,**hashes(snapshot)))
  stats['session.json']=signature(snapshot)
  inventory=archive.private/(job['id']+'-manual-index.json')
- private_save(inventory,dict(schema=1,session_id=job['id'],review_revision=rev,files=files,excluded=['Duplicate MKV container; video.mp4 preserves original encoded video','Temporary capture segments','Unreviewed preview stills','Private configuration and credentials']))
+ private_save(inventory,dict(schema=1,session_id=job['id'],review_revision=rev,files=files,excluded=['Temporary capture segments','Unreviewed preview stills','Private configuration and credentials']))
  files.append(dict(name='archive-index.json',private_source=inventory.name,**hashes(inventory)));stats['archive-index.json']=signature(inventory)
  # Adopt a completed one-off upload without sending its unchanged video again.
  receipt=load(folder/'manual-internet-archive.json',{})

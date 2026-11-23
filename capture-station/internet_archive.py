@@ -224,7 +224,7 @@ class InternetArchive:
         removed=len(job['files'])!=old_length
         known={e['name'] for e in job['files']}
         for i,entry in enumerate(job['files']):
-            if entry['name'] in ('air-traffic.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4'):
+            if entry['name'] in ('air-traffic.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4','video-trimmed.mp4'):
                 updated=dict(name=entry['name'],**hashes(folder/entry['name']))
                 if updated!=entry:job['files'][i]=updated;changed.append(i)
         for path in sorted(folder.iterdir()):
@@ -237,6 +237,8 @@ class InternetArchive:
         # private/configuration folders or follow symlinks.
         known={e['name'] for e in job['files']}
         evidence=[folder/'video-annotated.mp4']
+        trim=load(folder/'video-trim.json',{})
+        if trim.get('enabled') and trim.get('video')=='video-trimmed.mp4':evidence.append(folder/'video-trimmed.mp4')
         if job.get('recovered_evidence'):
             evidence.append(folder/'recovery-original.mp4')
             for directory in ('recovery-segments','recovery-context','recovery-crops'):
