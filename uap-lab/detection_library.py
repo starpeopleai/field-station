@@ -107,7 +107,7 @@ def collect(data,publish=None):
    if delivery in ('cancelled','expired') or (delivery=='suppressed' and not e.get('review_only')):continue
    name=e.get('native_crop','native-object.png')
    if name not in ('native-object.png','object.png') or not (path.parent/name).is_file():continue
-   rows[key]=dict(id=key,kind='detection',created=e.get('created_epoch',0),label=model_label,human_reviewed=False,image_url='/api/label-queue/image?id='+key,frame_url='/api/label-queue/image?full=1&id='+key,review_url='/email-review?id='+key)
+   rows[key]=dict(id=key,kind='detection',created=e.get('created_epoch',0),detected_epoch=e.get('detected_epoch'),label=model_label,human_reviewed=False,image_url='/api/label-queue/image?id='+key,frame_url='/api/label-queue/image?full=1&id='+key,review_url='/email-review?id='+key)
   rows[key]['model_label']=model_label
   if (path.parent/'object.png').is_file():rows[key]['frame_url']='/api/label-queue/image?full=1&id='+key
   if reviewed:continue
@@ -139,10 +139,12 @@ def current_reviews(rows,records):
  result.extend(reviews.values())
  return sorted(result,key=lambda row:(row['created'],row['id']),reverse=True)
 
-def listing(data,view='all',before='',limit=100,wait=False,classification=None,review_status=None,export=False):
+def listing(data,view='all',before='',limit=100,wait=False,classification=None,review_status=None,export=False,captured_from=None,captured_to=None):
+ from capture_time_filter import bounds,filter_objects
+ start,end=bounds(captured_from,captured_to)
  if view=='manual_recordings':
   from manual_recordings import listing as manual_listing
-  result=manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),before,limit)
+  result=manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),before,limit,captured_from=start,captured_to=end)
   cache_key=str(Path(data));stamp,detection_counts=_SOURCE_COUNTS.get(cache_key,(0,{}))
   if time.monotonic()-stamp>30 and cache_key not in _COUNT_REFRESH:
    _COUNT_REFRESH.add(cache_key)
@@ -175,6 +177,7 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
  bookmarks=stars(data)
  rows=[dict(row,starred=canonical(row['id']) in bookmarks) for row in rows]
  if export:return [dict(row) for row in rows if row['kind'] in ('detection','review')]
+ if start is not None or end is not None:rows=filter_objects(data,rows,records,start,end)
  counts={v:0 for v in VIEWS}
  def matches(row,v):
   if v=='starred':return row.get('starred',False)
@@ -196,7 +199,8 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
  from manual_recordings import listing as manual_listing
  source_counts={'manual_recordings':manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),limit=1)['total']}
  if cached is not None and cached[0]!=0:
-  source_counts['detections']=counts['all'];_SOURCE_COUNTS[str(Path(data))]=(time.monotonic(),dict(source_counts))
+  source_counts['detections']=counts['all']
+  if start is None and end is None:_SOURCE_COUNTS[str(Path(data))]=(time.monotonic(),dict(source_counts))
  return dict(items=page,total=filtered_total,source_counts=source_counts,counts=counts,filter_counts=filter_counts,counts_indexing=cached is None or cached[0]==0,indexing=indexing and not ((view=='needs_review' or review_status=='needs_review') and arrivals_complete),ready=cached is not None or arrivals_complete,index_error=error,next_cursor=cursor,labels=sorted(LABELS))
 
 def label(data,body):
