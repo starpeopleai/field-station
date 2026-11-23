@@ -6,6 +6,10 @@
  const undo=document.querySelector('#formation-undo'),save=document.querySelector('#formation-save'),message=document.querySelector('#formation-status');
  const predict=document.querySelector('#formation-predict'),exportPrediction=document.querySelector('#formation-export-prediction');
  let estimates=[],savedJob=null;
+ const hide=document.querySelector('#formation-hide-local');
+ const hideKey='formation.hide-in-app.'+id;
+ try{hide.checked=localStorage.getItem(hideKey)==='1';}catch{}
+ let operatorSetMode=false;
  const saveStatus=document.querySelector('#formation-save-status');
  const route='/api/email-review/formation',query='?'+new URLSearchParams({id});
  let picking=false,points=[],anchor=null,tracks=[],revision='',timer,state='',sending=false;
@@ -26,6 +30,7 @@
    tools.hidden=!toggle.checked&&!state&&!picking;
    exportPrediction.hidden=!predict.checked||picking||state!=='ready'||savedJob?.prediction===true;
    exportPrediction.disabled=sending;
+   edit.disabled=hide.checked;
    edit.hidden=picking||!toggle.checked;undo.hidden=!picking||!toggle.checked;save.hidden=!picking;
    undo.disabled=!points.length||sending;save.disabled=points.length<2||sending;
  }
@@ -39,20 +44,28 @@
    clearTimeout(timer);
    try{
      const response=await fetch(route+query,{cache:'no-store'});if(!response.ok)throw Error('Could not load the overlay.');
-     const job=await response.json();state=job.state||'';if(!savedJob&&job.prediction)predict.checked=true;savedJob=job;buttons();
+     const job=await response.json();state=job.state||'';if(!savedJob&&job.prediction)predict.checked=true;if(!savedJob&&state&&!operatorSetMode)toggle.checked=true;savedJob=job;buttons();
      if(toggle.checked&&state==='ready'&&revision!==job.revision){
        const r=await fetch(route+'/tracks'+query+'&predict=1&v='+job.revision);if(!r.ok)throw Error('Could not load the tracks.');
        const payload=await r.json();tracks=payload.tracks;estimates=payload.predictions||[];revision=job.revision;draw();
      }
      if(!toggle.checked)message.textContent=picking&&points.length?'Choose Track and archive to save.':state==='error'?job.error:'';
-     else if(!picking)message.textContent=state==='error'?job.error:state==='ready'?(predict.checked?'Dashed lines and diamonds indicate predicted positions.':'Tracked lights · image-plane positions'):state?'Tracking lights…':'';
+     else if(!picking)message.textContent=state==='error'?job.error:state==='ready'?(hide.checked?'':predict.checked?'Dashed lines and diamonds indicate predicted positions.':'Tracked lights · image-plane positions'):state?'Tracking lights…':'';
      if(state==='queued'||state==='tracking')timer=setTimeout(refresh,3000);
    }catch(e){message.textContent=e.message;timer=setTimeout(refresh,5000);}
  }
+ hide.onchange=()=>{
+   try{localStorage.setItem(hideKey,hide.checked?'1':'0');}catch{}
+   buttons();draw();
+   if(picking&&hide.checked)message.textContent='Overlay hidden in this player.';
+   else if(picking)instructions();
+   else refresh();
+ };
  toggle.onchange=async()=>{
+   operatorSetMode=true;
    buttons();draw();
    await refresh();
-   if(toggle.checked&&picking)instructions();
+   if(toggle.checked&&picking&&!hide.checked)instructions();
    else if(toggle.checked&&(!state||state==='error'))pick();
  };
  predict.onchange=()=>{buttons();draw();if(!picking)refresh();};
@@ -69,7 +82,7 @@
  canvas.addEventListener('pointerdown',e=>{
    if(!toggle.checked||!picking)return;
    e.preventDefault();e.stopImmediatePropagation();
-   if(!ready||video.seeking||sending)return;
+   if(hide.checked||!ready||video.seeking||sending)return;
    video.pause();
    const t=frameAt(video.currentTime);
    if(anchor!==null&&Math.abs(t-anchor)>.002){message.textContent='Return to the selected frame or undo the points to start again.';return;}
@@ -85,7 +98,7 @@
    }catch(e){message.textContent=e.message;}finally{sending=false;buttons();}
  };
  window.formationDraw=t=>{
-   if(!toggle.checked)return false;
+   if(!toggle.checked||hide.checked)return false;
    let visible=[];const inferred=new Set();
    if(picking){if(anchor===null||Math.abs(anchor-t)<.003)visible=points;}
    else if(tracks.length&&t>=tracks[0][0]&&t<=tracks.at(-1)[0]){
