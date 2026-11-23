@@ -191,6 +191,31 @@
  const dialog=document.createElement('dialog');dialog.id='stationSettings';dialog.setAttribute('aria-labelledby','stationSettingsTitle');
  dialog.innerHTML='<form method="dialog" class="settings-heading"><h2 id="stationSettingsTitle">Settings</h2><button aria-label="Close settings" value="close">×</button></form><label class="settings-option" for="negativeBacklogLimit"><span>Limit non-anomalous frames</span><input id="negativeBacklogLimit" type="checkbox" role="switch" aria-describedby="negativeBacklogHelp" disabled></label><label id="negativeBacklogCountRow" class="settings-option settings-delay" for="negativeBacklogCount" hidden><span>Frame limit</span><select id="negativeBacklogCount" disabled><option value="250">250</option><option value="500">500</option><option value="1000" selected>1,000</option><option value="2500">2,500</option><option value="5000">5,000</option></select></label><p id="negativeBacklogHelp">Automatically remove excess machine-only, non-anomalous detections, day or night. Human-reviewed frames, starred evidence, and manual recordings are kept. New and actively reviewed frames may temporarily exceed the limit.</p><label class="settings-option" for="daytimeAutoCleanup"><span>Daytime auto-cleanup</span><input id="daytimeAutoCleanup" type="checkbox" role="switch" disabled></label><label class="settings-option settings-delay" for="daytimeCleanupDelay"><span>Delete after</span><select id="daytimeCleanupDelay" disabled><option value="10800">3 hours</option><option value="21600">6 hours</option><option value="43200">12 hours</option><option value="86400">24 hours</option></select></label><p id="daytimeCleanupHelp">Delete machine-only, non-anomalous daytime detections after the selected time from capture. Runs during daylight; nighttime detections, human-reviewed training data, starred evidence, and manual recordings are kept.</p><p id="stationLocation">Automatic location: unknown</p><p id="stationSettingsStatus" role="status"></p>';
  document.body.append(dialog);const cap=dialog.querySelector('#negativeBacklogLimit'),capCount=dialog.querySelector('#negativeBacklogCount'),toggle=dialog.querySelector('#daytimeAutoCleanup'),delay=dialog.querySelector('#daytimeCleanupDelay'),status=dialog.querySelector('[role=status]');toggle.setAttribute('aria-describedby','daytimeCleanupHelp');delay.setAttribute('aria-describedby','daytimeCleanupHelp');let confirmed={negative_backlog_enabled:false,negative_backlog_limit:1000,daytime_auto_cleanup:false,after_seconds:10800},busy=false;
+ const chromeLabel=document.createElement('label');
+ chromeLabel.className='settings-option';
+ chromeLabel.innerHTML='<span>Hide camera feed controls</span><input type="checkbox" role="switch" aria-describedby="cameraChromeHelp">';
+ const chromeHelp=document.createElement('p');chromeHelp.id='cameraChromeHelp';
+ chromeHelp.textContent='On this browser, tap the feed or press Escape to show the controls again.';
+ dialog.querySelector('.settings-option').before(chromeLabel,chromeHelp);
+ const chromeToggle=chromeLabel.querySelector('input'),chromeKey='field-station.hide-camera-chrome';
+ function syncChrome(hidden){
+  chromeToggle.checked=hidden;
+  document.body.classList.toggle('hide-camera-chrome',hidden);
+ }
+ function readChrome(){try{return localStorage.getItem(chromeKey)==='1';}catch{return false;}}
+ function setChrome(hidden){
+  try{localStorage.setItem(chromeKey,hidden?'1':'0');}catch{}
+  syncChrome(hidden);
+ }
+ syncChrome(readChrome());
+ chromeToggle.onchange=()=>setChrome(chromeToggle.checked);
+ window.addEventListener('storage',e=>{if(e.key===chromeKey||e.key===null)syncChrome(readChrome());});
+ const camera=document.getElementById('liveViewer');
+ if(camera){
+  const canRestore=()=>chromeToggle.checked&&document.body.classList.contains('live-mode')&&!document.querySelector('dialog[open]');
+  camera.addEventListener('click',e=>{if(canRestore()){e.preventDefault();e.stopImmediatePropagation();setChrome(false);}},{capture:true});
+  window.addEventListener('keydown',e=>{if(e.key==='Escape'&&!e.repeat&&canRestore()){e.preventDefault();setChrome(false);}});
+ }
  const zoneLabel=document.createElement('label');
  zoneLabel.className='settings-option';
  zoneLabel.innerHTML='<span>Detection zone</span><input type="checkbox" role="switch" disabled>';
