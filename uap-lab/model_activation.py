@@ -32,14 +32,15 @@ def request(data,value):
   fcntl.flock(lock,fcntl.LOCK_EX)
   old=read(root/'activation.json',{}) or {}
   if old.get('phase') in ('queued','preparing','activating','monitoring'):
-   if all(old.get(k)==value.get(k) for k in ('lane','version','revision')):return old
+   if all(old.get(k)==value.get(k) for k in ('lane','version')) and value.get('revision',old.get('revision'))==old.get('revision'):return old
    raise ValueError('Another model switch is in progress.')
   lane=value.get('lane');version=value.get('version');catalog=read(root/'models.json',{})
   model=next((m for m in catalog.get('models',[]) if m.get('lane')==lane and m.get('version')==version and m.get('available')),None)
   if lane not in LANES or not model:raise ValueError('Model changed or is unavailable. Refresh before switching.')
   policy=effective(model['policy'],lane,snapshot(data))
-  if value.get('revision')!=policy.get('settings_revision',0):raise ValueError('Decision settings changed. Refresh before switching.')
-  job=dict(id=uuid.uuid4().hex,lane=lane,version=version,revision=value['revision'],phase='queued',requested_epoch=time.time(),policy=policy)
+  if 'revision' in value and value['revision']!=policy.get('settings_revision',0):raise ValueError('Decision settings changed. Refresh before switching.')
+  job=dict(id=uuid.uuid4().hex,lane=lane,version=version,phase='queued',requested_epoch=time.time(),policy=policy)
+  if 'revision' in value:job['revision']=value['revision']
   save(root/'activation.json',job);return job
 
 def update(data,identity,**fields):

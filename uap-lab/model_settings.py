@@ -1,11 +1,29 @@
 """Version-scoped decision controls. Learned model artifacts remain immutable."""
-import argparse,copy,fcntl,json,math,os,re,time,uuid
+import argparse,copy,fcntl,hashlib,json,math,os,re,time,uuid
 from pathlib import Path
 
 LANES={'human':'Human-curated (stable)','experimental':'Human-curated (experimental)','hybrid':'Hybrid','machine':'Machine-only','rotation':'Human-curated (rotation)'}
 FIELDS={'anomaly_threshold','minimum_native_size','night_confirmation','minimum_context_score'}
 _CACHE={}
 AUTOMATIC={'hybrid','machine'}
+
+def settings_key(values):
+ """Numeric equality key for existing score caches and recorded predictions.
+
+ Equal settings share a key across saves. Keep zero for the default configuration
+ and use the exact integer range shared by SQLite and JavaScript.
+ """
+ if not values:return 0
+ normalized={k:float(v) if type(v) in (int,float) else v for k,v in values.items()}
+ raw=json.dumps(normalized,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+ return (1<<48) | int.from_bytes(hashlib.sha256(raw).digest()[:6],'big')
+
+def record_key(record):
+ # Historical comparisons already refer to these numbers. New records contain only values.
+ if 'revision' in record:return record['revision']
+ values=record.get('values',{})
+ if record.get('input_contract'):values=dict(values,input_contract=record['input_contract'])
+ return settings_key(values)
 
 def read(path,default=None):
  try:return json.loads(Path(path).read_text())
@@ -26,6 +44,7 @@ def snapshot(data):
  if cached is None or cached[0]!=identity:
   value=read(path,{'models':{}})
   if not isinstance(value,dict) or not isinstance(value.get('models',{}),dict):raise ValueError('Invalid model settings file')
+  for record in value.get('models',{}).values():record['revision']=record_key(record)
   _CACHE[str(path)]=(identity,value)
  return copy.deepcopy(_CACHE[str(path)][1])
 
@@ -67,7 +86,7 @@ def effective(policy,lane,document):
  if color:policy['color_decision']={**DEFAULTS,**policy.get('color_decision',{}),**color}
  policy['classification_input_scope']='review_box'
  if 'night_context_confirmation' in policy:policy['night_context_confirmation']['enabled']=False
- policy['settings_revision']=record.get('revision',0)
+ policy['settings_revision']=record_key(record)
  return policy
 
 def state(data):
@@ -98,14 +117,18 @@ def update(data,value):
   catalog=read(root/'models.json',{})
   model=next((m for m in catalog.get('models',[]) if m.get('lane')==lane and m.get('version')==version and m.get('available')),None)
   if model is None:raise ValueError('Model version changed. Refresh this tab before saving.')
-  document=snapshot(data);key=lane+':'+version;old=document.get('models',{}).get(key,{})
-  if value.get('revision')!=old.get('revision',0):raise ValueError('Settings changed in another session. Refresh before saving.')
+  document=read(root/'settings.json',{'models':{}});key=lane+':'+version;old=document.get('models',{}).get(key,{})
+  current=defaults(effective(model['policy'],lane,document))
+  if ('revision' in value and value['revision']!=record_key(old)) or value.get('expected',current)!=current:
+   raise ValueError('Settings changed in another session. Refresh before saving.')
   changes={} if value.get('reset') is True else validate(value.get('values'),model['policy'])
-  record=dict(values=changes,revision=old.get('revision',0)+1,epoch=time.time())
-  document.setdefault('models',{})[key]=record
-  document['history']=[*document.get('history',[]),dict(lane=lane,version=version,previous=old.get('values',{}),**record)][-100:]
-  save(root/'settings.json',document)
- return dict(saved=True,lane=lane,version=version,revision=record['revision'])
+  if value.get('reset') is not True and 'revision' not in value:changes={**old.get('values',{}),**changes}
+  baseline=defaults(model['policy'])
+  overrides={k:v for k,v in changes.items() if v!=baseline[k]}
+  if {**baseline,**overrides}!={**baseline,**old.get('values',{})} or (value.get('reset') is True and old.get('values')):
+   document.setdefault('models',{})[key]=dict(values=overrides,epoch=time.time())
+   save(root/'settings.json',document)
+ return dict(saved=True,lane=lane,version=version)
 
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--data',type=Path,required=True);parser.add_argument('action',choices=['export','catalog']);parser.add_argument('--json');args=parser.parse_args()
@@ -122,14 +145,13 @@ def rebase_experimental(data,version,policy):
  if version!=policy.get('version') or not re.fullmatch('[a-f0-9]{64}',version):raise ValueError('Invalid stable model version')
  root=Path(data)/'model-inspector';root.mkdir(parents=True,exist_ok=True)
  with (root/'settings.lock').open('a') as lock:
-  fcntl.flock(lock,fcntl.LOCK_EX);document=snapshot(data);key='experimental:'+version
+  fcntl.flock(lock,fcntl.LOCK_EX);document=read(root/'settings.json',{'models':{}});key='experimental:'+version
   if key in document.get('models',{}):return dict(changed=False,version=version)
   previous=[(k,v) for k,v in document.get('models',{}).items() if k.startswith('experimental:')]
   old_key,old=max(previous,key=lambda item:item[1].get('epoch',0)) if previous else (None,{})
   values={k:v for k,v in old.get('values',{}).items() if k in defaults(policy)};validate(values,policy)
-  record=dict(values=values,revision=1,epoch=time.time(),copied_from=old_key)
+  record=dict(values=values,epoch=time.time(),copied_from=old_key)
   document.setdefault('models',{})[key]=record
-  document['history']=[*document.get('history',[]),dict(lane='experimental',version=version,action='follow_stable_weights',**record)][-100:]
   save(root/'settings.json',document)
  return dict(changed=True,version=version,values=values)
 
@@ -138,11 +160,11 @@ def automatic_update(data,lane,version,revision,values,proof):
  if lane not in AUTOMATIC:raise ValueError('Manual model settings cannot be automatically changed')
  root=Path(data)/'model-inspector';root.mkdir(parents=True,exist_ok=True)
  with (root/'settings.lock').open('a') as lock:
-  fcntl.flock(lock,fcntl.LOCK_EX);document=snapshot(data);catalog=read(root/'models.json',{})
+  fcntl.flock(lock,fcntl.LOCK_EX);document=read(root/'settings.json',{'models':{}});catalog=read(root/'models.json',{})
   model=next((m for m in catalog.get('models',[]) if m.get('lane')==lane and m.get('version')==version and m.get('available')),None)
   if not model:raise ValueError('Model changed during automatic tuning')
   key=lane+':'+version;old=document.get('models',{}).get(key,{})
-  if old.get('revision',0)!=revision:raise ValueError('Settings changed during automatic tuning')
+  if record_key(old)!=revision:raise ValueError('Settings changed during automatic tuning')
   initialization=proof.get('action')=='automatic_baseline'
   if initialization:
    if old.get('owner')=='automatic':return dict(changed=False)
@@ -151,23 +173,23 @@ def automatic_update(data,lane,version,revision,values,proof):
    if old.get('owner')!='automatic' or not proof.get('accepted') or not proof.get('independent_groups') or proof.get('label_source')!=('human' if lane=='hybrid' else 'machine'):raise ValueError('Automatic tuning evidence is incomplete')
    changes=validate(values,model['policy'])
    if changes==old.get('values'):return dict(changed=False)
-  record=dict(values=changes,revision=revision+1,epoch=time.time(),owner='automatic',evidence=proof)
+  record=dict(values=changes,epoch=time.time(),owner='automatic',evidence=proof)
   document.setdefault('models',{})[key]=record
-  document['history']=[*document.get('history',[]),dict(lane=lane,version=version,previous=old,**record)][-100:]
   save(root/'settings.json',document)
- return dict(changed=True,revision=record['revision'])
+ return dict(changed=True,revision=record_key(record))
 
 
 def migrate_review_box_contract(data):
  """Version the input correction without overwriting the operator's settings."""
  root=Path(data)/'model-inspector'
  with (root/'settings.lock').open('a') as lock:
-  fcntl.flock(lock,fcntl.LOCK_EX);document=snapshot(data)
+  fcntl.flock(lock,fcntl.LOCK_EX);document=read(root/'settings.json',{'models':{}})
   if document.get('input_contract')=='review-box-v1':return dict(changed=False)
   catalog=read(root/'models.json',{})
   for model in catalog.get('models',[]):
    if not model.get('available'):continue
    key=model['lane']+':'+model['version'];old=document.setdefault('models',{}).get(key,{})
-   record=dict(old,values=old.get('values',{}),revision=old.get('revision',0)+1,epoch=time.time(),input_contract='review-box-v1')
-   document['models'][key]=record;document['history']=[*document.get('history',[]),dict(lane=model['lane'],version=model['version'],action='review_box_input_correction',**record)][-100:]
+   record=dict(old,values=old.get('values',{}),epoch=time.time(),input_contract='review-box-v1')
+   record.pop('revision',None)
+   document['models'][key]=record
   document['input_contract']='review-box-v1';save(root/'settings.json',document);return dict(changed=True)

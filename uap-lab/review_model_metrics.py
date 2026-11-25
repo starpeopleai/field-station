@@ -95,4 +95,4 @@ def snapshot(data,now=None):
     points=[rates(p) for _,p in sorted(days.items())]
     entry['periods'][period][light]=dict(rates({k:sum(p[k] for p in points) for k in ('tp','fp','tn','fn')}),points=points)
   timelines.append(entry)
- return dict(updated_epoch=now,timelines=timelines,series=list(series.values()),missing_predictions=missing,scope='Predictions recorded before human review; grouped by model version and decision settings revision.')
+ return dict(updated_epoch=now,timelines=timelines,series=list(series.values()),missing_predictions=missing,scope='Predictions recorded before human review; grouped by trained model and decision settings.')
