@@ -1,3 +1,4 @@
+import fcntl
 import http.client
 import json
 import os
@@ -45,3 +46,20 @@ class MakeLiveRouteTest(unittest.TestCase):
                 finally:
                     httpd.shutdown()
                     thread.join()
+
+
+    def test_deployment_lock_defers_delivery_without_losing_request(self):
+        import model_activation
+        with tempfile.TemporaryDirectory() as tmp, patch.object(model_activation, 'APP', Path(tmp)):
+            app = Path(tmp)
+            data = app / 'lab'
+            job = dict(id='operator-request', phase='queued', lane='experimental')
+            save(data / 'model-inspector/activation.json', job)
+            (app / 'auto-training').mkdir()
+            with (app / 'auto-training/deployment.lock').open('a') as maintenance:
+                fcntl.flock(maintenance, fcntl.LOCK_EX)
+                self.assertEqual(model_activation.next_request(data), {})
+                waiting = read(data / 'model-inspector/activation.json')
+                self.assertEqual(waiting['phase'], 'queued')
+                self.assertIn('maintenance', waiting['error'])
+            self.assertEqual(model_activation.next_request(data)['id'], job['id'])

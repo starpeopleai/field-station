@@ -14,6 +14,18 @@ def status(data):
  models=[dict(lane=m['lane'],version=m.get('version'),available=m.get('available',False),revision=effective(m['policy'],m['lane'],document).get('settings_revision',0) if m.get('available') else None) for m in catalog.get('models',[])]
  return dict(models=models,lane=lane,version=version,ready=bool(ready),settings_revision=health.get('decision_settings_revision'),request={k:request.get(k) for k in ('id','lane','version','revision','phase','error')})
 
+def next_request(data):
+ job=read(Path(data)/'model-inspector/activation.json',{}) or {}
+ if job.get('phase') not in ('queued','preparing','activating'):return job
+ with (APP/'auto-training/deployment.lock').open('a') as lock:
+  try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  except BlockingIOError:
+   # Leave the request durable. The worker polls again after maintenance.
+   message='Waiting for station maintenance to release the model.'
+   if job.get('error')!=message:update(data,job['id'],error=message)
+   return {}
+ return job
+
 def request(data,value):
  root=Path(data)/'model-inspector';root.mkdir(parents=True,exist_ok=True)
  with (root/'activation.lock').open('a') as lock:
