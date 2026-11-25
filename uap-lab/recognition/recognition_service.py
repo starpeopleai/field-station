@@ -107,7 +107,9 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
    while not stop.is_set():
     if stop_segment is None and read(Path(__file__).resolve().parents[2]/'capture-station/run/capture-control.json',{}).get('paused'):
      if classifier.proc.poll() is not None:raise RuntimeError('Active model process exited')
-     status.update(phase='capture_paused',model=policy['version'],runtime_ready=True,error=None,updated_epoch=time.time())
+     lane=config.get('decision_lane','human')
+     policy=decision_policy(base_policy,lane,decision_settings(output.parent))
+     status.update(phase='capture_paused',model=policy['version'],runtime_ready=True,decision_lane=lane,decision_settings_revision=policy.get('settings_revision',0),error=None,updated_epoch=time.time())
      atomic(output/'status.json',status)
      stop.wait(2);continue
     folder=root/state['generation']
