@@ -76,7 +76,11 @@ def train_lane(cfg,cycle,lane):
  # Serialize against collection and any worker already running before the cascade.
  with (root/'worker.lock').open('a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX)
-  folder=build_snapshot(cfg,cycle,lane);state=read(root/'status.json',{})
+  state=read(root/'status.json',{})
+  if lane=='experimental' and state.get('experiment_mode')=='trained':
+   from experimental_profile import selection
+   return selection(state)
+  folder=build_snapshot(cfg,cycle,lane)
   state.update(phase='training',training_lane={'experimental':'human_experimental','hybrid':'hybrid','machine':'machine_only'}[lane],run_directory=str(folder),cascade_id=cycle['id'],error=None,baseline_copy=False,reason=None)
   save(root/'status.json',state)
   try:finish_training(root,folder,code,Path(cfg['human_root']),state)
