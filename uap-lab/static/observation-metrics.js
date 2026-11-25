@@ -52,9 +52,9 @@ function modelComposite(metrics){
   $(light+'-false-positive-empty').hidden=series.some(s=>(s.values?.points||[]).some(p=>Number.isFinite(p.rate)));$(light+'-false-positive-empty').textContent='No reviewed predictions available for these models in this period.';
  }
  async function makeLive(model){
-  if(switching||window.FIELD_PUBLIC_READ_ONLY)return;switching=true;modelComparison();
-  try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!auth.ok)throw Error('Station authentication unavailable');const {token}=await auth.json();const response=await fetch('/api/model-activate',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify({lane:model.lane,version:model.version,revision:model.revision}),signal:AbortSignal.timeout(15000)});const result=await response.json();if(!response.ok)throw Error(result.error||'Model switch could not be queued');snapshot.model_activation.request=result;window.stationNotifications?.set('modelActivation','Activating the selected model…');}
-  catch(error){window.stationNotifications?.set('modelActivation',error.message,true)}finally{switching=false;modelComparison();void refresh()}
+  if(switching||window.FIELD_PUBLIC_READ_ONLY)return;switching=true;window.stationNotifications?.clear?.('modelActivationRequest');modelComparison();
+  try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!auth.ok)throw Error('Station authentication unavailable');const {token}=await auth.json();const response=await fetch('/api/model-activate',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify({lane:model.lane,version:model.version,revision:model.revision}),signal:AbortSignal.timeout(15000)});if(!response.ok){const problem=await response.json().catch(()=>({}));throw Error(problem.error||'Model switch could not be queued (HTTP '+response.status+').')}const result=await response.json();snapshot.model_activation.request=result;window.stationNotifications?.set('modelActivation','Activating the selected model…');}
+  catch(error){window.stationNotifications?.set('modelActivationRequest',error.message,true)}finally{switching=false;modelComparison();void refresh()}
  }
  function modelLeaderboard(points,measure){
   const active=snapshot?.model_activation||{},request=active.request||{},busy=['queued','preparing','activating','monitoring'].includes(request.phase);

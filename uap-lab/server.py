@@ -257,6 +257,10 @@ class Handler(BaseHTTPRequestHandler):
             origin=self.headers.get('Origin')
             if self.headers.get('X-Lab-Token')!=TOKEN or (origin and urlsplit(origin).netloc!=self.headers.get('Host')):self.json(dict(error='Reload this page to reconnect securely.'),403);return
             p=urlsplit(self.path);length=int(self.headers.get('Content-Length','0'))
+            if p.path=='/api/model-activate':
+                if not 0<length<=4096:raise ValueError('Invalid model activation request')
+                from model_activation import request
+                self.json(request(lab.DATA,json.loads(self.rfile.read(length))),202);return
             if p.path=='/api/air-traffic/settings':
                 if not 0<length<=2048:raise ValueError('Invalid settings request')
                 import air_traffic

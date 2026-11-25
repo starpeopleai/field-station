@@ -78,6 +78,7 @@ PYTHONPATH=uap-lab:capture-station:shared "$PYTHON" -m unittest test_archive_lin
 
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_observation_metrics.py'
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_review_model_metrics.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_model_activation_route.py'
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_review_index_journal.py'
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_review_receipts.py'
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_review_media_location.py'
