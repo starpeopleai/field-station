@@ -18,7 +18,7 @@ def activate(data,folder,identity):
   policy=read(folder/'candidate-policy.json',{})
   if policy.get('version')!=job['version']:raise ValueError('Transferred model version mismatch')
   current_policy=effective(policy,job['lane'],snapshot(data))
-  if current_policy.get('settings_revision',0)!=job['revision']:raise ValueError('Decision settings changed during transfer; select the model again')
+  if 'revision' in job and current_policy.get('settings_revision',0)!=job['revision']:raise ValueError('Decision settings changed during transfer; select the model again')
   cfg=read(deploy.CONFIG);current=read(cfg['policy'])['version']
   if cfg.get('selection_request_id')==identity:return status(data)
   compiled=folder/'candidate.mlmodelc'

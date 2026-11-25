@@ -22,7 +22,7 @@ class MakeLiveRouteTest(unittest.TestCase):
             policy = dict(version='a' * 64, thresholds={'anomalous': .6})
             model = dict(lane='experimental', version=policy['version'], available=True, policy=policy)
             save(root / 'models.json', {'models': [model]})
-            payload = json.dumps(dict(lane=model['lane'], version=model['version'], revision=0))
+            payload = json.dumps(dict(lane=model['lane'], version=model['version']))
             with server.StationHTTPServer(('127.0.0.1', 0), server.Handler) as httpd:
                 thread = threading.Thread(target=httpd.serve_forever, daemon=True)
                 thread.start()
@@ -41,6 +41,7 @@ class MakeLiveRouteTest(unittest.TestCase):
                     status, job = post(server.TOKEN)
                     self.assertEqual(status, 202)
                     self.assertEqual(job['phase'], 'queued')
+                    self.assertNotIn('revision', job)
                     self.assertEqual(read(root / 'activation.json')['version'], model['version'])
                     self.assertEqual(post(server.TOKEN)[1]['id'], job['id'])
                 finally:
