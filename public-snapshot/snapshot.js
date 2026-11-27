@@ -44,7 +44,17 @@ if(location.pathname.length>1&&location.pathname.endsWith('/'))history.replaceSt
 
   const style=document.createElement('style');style.textContent='#snapshotFreshness{font:10px var(--app-font,monospace);opacity:.75;margin-left:auto;padding:4px 12px;max-width:45vw;line-height:1.4}#publicReadOnly{display:none!important}.public-readonly #trainNow,.public-readonly #pauseCapture,.public-readonly #clearBacklog,.public-readonly #uploadDetections{display:none!important}';document.head.append(style);
   if(location.pathname==='/'){
-   const label=()=>{const e=document.querySelector('#liveStatus');if(e){e.querySelector('span:last-child').textContent='Snapshot';e.title='Saved camera frame, not a live feed';e.dataset.state='snapshot';e.setAttribute('aria-label','Saved camera snapshot');const rf=document.querySelector('#rfStatus');if(rf)rf.textContent='Saved RF snapshot';}const card=document.querySelector('#noSignalCard');if(card)card.hidden=true;document.querySelector('#liveViewer')?.classList.remove('no-camera-signal');};window.updateLiveHealth=label;document.querySelector('#liveImage').src='/camera.jpg';label();setInterval(label,1000);
+   const overlay=document.querySelector('#rfOverlay');
+   document.documentElement.classList.add('snapshot-camera-controls');
+   const controlStyle=document.createElement('style');controlStyle.textContent='.snapshot-camera-controls .rf-overlay .session-control{display:flex!important}.snapshot-camera-controls #sessionToggle,.snapshot-camera-controls #sessionLabel{display:inline-block!important}.snapshot-camera-controls #rfOverlay input:disabled{opacity:.65;cursor:default}.snapshot-camera-controls .snapshot-rf-link{display:flex;width:100%;justify-content:space-between;background:transparent;color:inherit;border:0;padding:4px 0 10px;margin-bottom:8px;border-bottom:1px solid currentColor;font:inherit;font-size:11px;opacity:.65}';document.head.append(controlStyle);
+   if(overlay){
+    const controls=await load('/snapshot/camera-controls.json').catch(()=>({}));
+    const addSwitch=(id,text,value)=>{let input=document.getElementById(id);if(!input){const row=document.createElement('div');row.className='ce5-control';const label=document.createElement('label');label.htmlFor=id;label.textContent=text;input=document.createElement('input');input.id=id;input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('aria-label',text);row.append(label,input);overlay.prepend(row);}input.disabled=true;input.checked=value===true;input.title=typeof value==='boolean'?'Read only · state at snapshot':'Read only · state unavailable in this snapshot';input.closest('.ce5-control,.session-control')?.removeAttribute('hidden');};
+    addSwitch('ce5Toggle','CE5 Tones',controls.ce5_playing);addSwitch('liveStreamToggle','Live stream',controls.live_streaming);
+    const rfTrigger=overlay.querySelector('.rf-message-trigger');if(rfTrigger)overlay.prepend(rfTrigger);
+    const manual=document.getElementById('sessionToggle');if(manual){manual.disabled=true;manual.title='Read only · state at snapshot';}
+   }
+   const label=()=>{const e=document.querySelector('#liveStatus');if(e){e.querySelector('span:last-child').textContent='Snapshot';e.title='Saved camera frame, not a live feed';e.dataset.state='snapshot';e.setAttribute('aria-label','Saved camera snapshot');}const card=document.querySelector('#noSignalCard');if(card)card.hidden=true;document.querySelector('#liveViewer')?.classList.remove('no-camera-signal');};window.updateLiveHealth=label;document.querySelector('#liveImage').src='/camera.jpg';label();setInterval(label,1000);
   }
  });
 })();

@@ -53,8 +53,8 @@ def verify_storage(root,config):
 
 
 def run(c):
- root=Path(c['root']);machine=c.get('lane')=='machine_only';volume=Path('/Volumes/UFO-Work')
- if not volume.is_mount() or not root.resolve().is_relative_to(volume):raise ValueError('HQ external storage unavailable')
+ root=Path(c['root']);machine=c.get('lane')=='machine_only'
+ verify_storage(root,c)
  root.mkdir(parents=True,exist_ok=True);(root/'frames').mkdir(exist_ok=True)
  with (root/'worker.lock').open('a') as lock:
   try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -178,7 +178,7 @@ def run(c):
   if (folder/'candidate-policy.json').exists():
    state.update(phase='shadow_ready',shadow_folder=str(folder),shadow_version=key,shadow_seed_only=False,trained_epoch=time.time());save(root/'status.json',state);return
   state.update(phase='building',run_directory=str(folder));save(root/'status.json',state)
-  built=build(human_root/'baseline/dataset-001',reviews,folder,root/'split-ledger.json')
+  built=build(human_root/'baseline/dataset-001',reviews,folder,root/'split-ledger.json',image_pool=root.parent/'training-objects')
   for row in pseudo:
    image='images/pseudo-'+row['id']+'.png';os.link(root/'frames'/(row['id']+'.png'),folder/image)
    built['samples'].append(dict(origin='pseudo:'+row['id'],label=row['label'],group='machine:'+row['generation'],pixel_sha256=row['pixel_sha256'],native_width=row['native_width'],native_height=row['native_height'],image=image,split='train',human_confirmed=False,pseudo_label=True,input_color_space='RGB'))

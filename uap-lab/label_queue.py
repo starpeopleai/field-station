@@ -140,7 +140,11 @@ def label(data,body):
   if not body.get('allow_update') and r.get('event_id')==key and r.get('human_confirmed') and not r.get('deleted'):raise ValueError('This detection has already been reviewed. Open its video to change the label.')
  e=read(target/'event.json',{});path=target/e.get('native_crop','native-object.png')
  if path.is_symlink() or path.resolve().parent!=target.resolve():raise ValueError('Invalid crop')
- crop=path.read_bytes();digest=hashlib.sha256(crop).hexdigest()
+ try:crop=path.read_bytes()
+ except FileNotFoundError:
+  from review_crop_recovery import recover
+  crop=recover(target,e)
+ digest=hashlib.sha256(crop).hexdigest()
  if digest!=e.get('native_crop_sha256'):raise ValueError('Original crop checksum does not match')
  record=dict(schema=1,event_id=key,sample_id=key,message_id=message,reviewed_epoch=time.time(),label=category,human_confirmed=True,source='station_web_review',generation=e['generation'],sequence=e.get('sequence'),pts_seconds=e['pts_seconds'],bounds=e['bounds'],model=e['model'],native_crop_sha256=digest,binary_anomalous=category=='anomalous',multiclass_ready=True,reviewer='station_web_ui',source_color_space=e.get('source_color_space','GRAY'),model_label=canonical_label(e.get('classification')))
  clip=read(target/'review-clip.json',{})

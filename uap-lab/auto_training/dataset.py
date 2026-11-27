@@ -35,7 +35,7 @@ def reviewed_training_groups(rows):
    result.append(dict(r,group=group,group_aliases=aliases,fixed_split=role))
  return result,audit
 
-def build(base,reviews,out,ledger,progress=None):
+def build(base,reviews,out,ledger,progress=None,image_pool=None):
  base,reviews,out,ledger=map(Path,(base,reviews,out,ledger));original=json.loads((base/'dataset.json').read_text());current=json.loads((reviews/'reviews.json').read_text());frozen=json.loads(ledger.read_text()) if ledger.exists() else {};rows=[];aliases={}
  for row in original['samples']:
   for alias in [row['group'],*row.get('group_aliases',[])]:aliases[alias]=row['group']
@@ -70,7 +70,11 @@ def build(base,reviews,out,ledger,progress=None):
  report(f'Preparing training images: 0 of {len(rows):,}.',True)
  for i,row in enumerate(rows):
   name=f'images/{i:06d}.png'
-  with Image.open(row['source']) as im:im.convert('RGB').save(out/name)
+  import io
+  from training_storage import store_image
+  with Image.open(row['source']) as im:
+   encoded=io.BytesIO();im.convert('RGB').save(encoded,format='PNG')
+  store_image(out/name,encoded.getvalue(),image_pool or out.parent/'.training-objects')
   report(f'Preparing training images: {i+1:,} of {len(rows):,}.')
   samples.append({k:v for k,v in dict(row,image=name).items() if k!='source'})
  ledger.parent.mkdir(parents=True,exist_ok=True);temp=ledger.with_suffix('.tmp');temp.write_text(json.dumps(frozen));temp.replace(ledger)

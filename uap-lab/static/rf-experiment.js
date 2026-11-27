@@ -1,7 +1,8 @@
 /* Private, explicitly armed RF control. Never auto-send or retry transmissions. */
 'use strict';
 (()=>{
- if(window.FIELD_PUBLIC_READ_ONLY===true)return;
+ const readOnly=window.FIELD_PUBLIC_READ_ONLY===true;
+ if(readOnly&&!window.FIELD_PUBLIC_SNAPSHOT)return;
  const target=document.getElementById('rfOverlay');if(!target)return;
  const panel=document.createElement('dialog');panel.className='rf-experiment';panel.setAttribute('aria-labelledby','rfDialogTitle');
  const trigger=document.createElement('button');trigger.type='button';trigger.className='rf-message-trigger';trigger.textContent='RF message';trigger.onclick=()=>panel.showModal();
@@ -35,6 +36,21 @@
  </div>`;
  target.prepend(trigger);document.body.append(panel);
  const q=id=>panel.querySelector('#'+id),profile=q('rfProfile'),setup=q('rfSetupForm'),message=q('rfMessageForm'),arm=q('rfArm'),send=q('rfSend'),result=q('rfResult');
+ if(readOnly){
+  panel.dataset.readOnly='true';
+  q('rfDialogTitle').textContent='RF message · Read only';
+  profile.add(new Option('Private station setting',''));
+  setup.elements.tx_serial.add(new Option('Private station setting',''));
+  q('rfProfileDescription').textContent='Station configuration is not included in this public snapshot.';
+  q('rfSetup').open=true;
+  for(const field of panel.querySelectorAll('input,select,textarea,button'))if(field.id!=='rfClose')field.disabled=true;
+  for(const field of panel.querySelectorAll('input:not([type=checkbox]),textarea'))field.placeholder='Not included in public snapshot';
+  setup.elements.license_class.selectedIndex=-1;
+  result.textContent='Read-only form. Operator details, message contents, and transmitter state are private.';
+  setup.onsubmit=message.onsubmit=e=>e.preventDefault();
+  q('rfClose').onclick=()=>panel.close();
+  return;
+ }
  let token,lease=null,profiles=[],state=null,polling=false,changing=false,heartbeatBusy=false;
  async function request(path,body){const r=await fetch(path,{...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(body)}),signal:AbortSignal.timeout(10000)});const d=await r.json();if(!r.ok)throw Error(d.error||'RF request failed');return d;}
  function description(){const p=profiles.find(p=>p.id===profile.value);q('rfProfileDescription').textContent=p?`${p.description} ${p.preset.label}.`:'';}

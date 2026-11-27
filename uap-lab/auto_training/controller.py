@@ -14,7 +14,11 @@ def save(p,d):
 
 class Controller:
  def __init__(self,cfg):
-  self.c=cfg;self.root=Path(cfg['root']);self.app=cfg['remote_app'];self.python=cfg['remote_python'];self.code=Path(__file__).resolve().parent;self.state=read(self.root/'status.json',{});self.recipe=hashlib.sha256(b''.join((self.code/name).read_bytes() for name in ('train_candidate.py','vision_features.py','training_policy.py','evaluate_candidate.py','training_benchmark.py','native_feature_worker.swift','refine_candidate.py','binary_refinement.py','correction_experiment.py','recording_balance.py','human_nonlinear.py','human_head.py','prospective.py','dataset.py','../classification_taxonomy.py','../binary_decision.py'))+json.dumps({'training_strategy':cfg.get('training_strategy','recording_balanced')},sort_keys=True).encode()).hexdigest()
+  if cfg.get('storage_volume'):
+   volume=Path(cfg['storage_volume'])
+   if not volume.is_mount() or not Path(cfg['root']).resolve().is_relative_to(volume.resolve()):raise ValueError('HQ training volume unavailable')
+   if (volume/'.training-volume').read_text().strip()!=cfg['storage_volume_id']:raise ValueError('Wrong HQ training volume')
+  self.c=cfg;self.root=Path(cfg['root']).resolve();self.app=cfg['remote_app'];self.python=cfg['remote_python'];self.code=Path(__file__).resolve().parent;self.state=read(self.root/'status.json',{});self.recipe=hashlib.sha256(b''.join((self.code/name).read_bytes() for name in ('train_candidate.py','vision_features.py','training_policy.py','evaluate_candidate.py','training_benchmark.py','native_feature_worker.swift','refine_candidate.py','binary_refinement.py','correction_experiment.py','recording_balance.py','human_nonlinear.py','human_head.py','prospective.py','dataset.py','../classification_taxonomy.py','../binary_decision.py'))+json.dumps({'training_strategy':cfg.get('training_strategy','recording_balanced')},sort_keys=True).encode()).hexdigest()
  def remote(self,args,**kwargs):
   transport=self.c.get('ssh_command',['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',self.c['host']])
   return subprocess.run([*transport,shlex.join(map(str,args))],check=True,**kwargs)
@@ -56,6 +60,10 @@ class Controller:
   with archive.open('wb') as f:self.remote(['tar','-czf','-','-C',remote,*paths],stdout=f,timeout=300)
   with tarfile.open(archive) as tar:tar.extractall(target,filter='data')
   archive.unlink()
+  if (target/'images').is_dir():
+   from training_storage import deduplicate
+   try:deduplicate((target/'images').glob('*.png'),self.root.parent/'training-objects')
+   except BlockingIOError:pass  # The maintenance pass will deduplicate these after training.
  def run_script(self,script,args,folder):
   with (folder/(script+'.log')).open('a') as log:subprocess.run([self.c['training_python'],str(self.code/script),*map(str,args)],stdout=log,stderr=subprocess.STDOUT,check=True,timeout=3600)
  def monitor(self,folder,version,before):
@@ -145,10 +153,11 @@ class Controller:
   self.resume_state=dict(self.state)
   self.notify_release()
   if self.recover():return
+  self.mark('snapshot',reason='Preparing the training dataset.',candidate_version=None,run_directory=None)
   snapshot=self.snapshot();fp=snapshot['fingerprint']
   if not re.fullmatch('[a-f0-9]{64}',fp):raise ValueError('Invalid snapshot identity')
   if not hasattr(self,'provisional_slot') and not hasattr(self,'manual_request_id') and fp==self.state.get('completed_fingerprint') and self.recipe==self.state.get('completed_recipe'):return
-  self.mark('snapshot',fingerprint=fp,examples=snapshot['examples'],reason=None,training_recipe=self.recipe)
+  self.mark('snapshot',fingerprint=fp,examples=snapshot['examples'],reason=None,training_recipe=self.recipe,candidate_version=None,run_directory=None)
   reviews=self.root/'reviews'/fp
   if not (reviews/'reviews.json').exists():self.download(self.app+'/auto-training/exports/'+fp,['reviews.json','images'],reviews)
   from collections import Counter
@@ -158,7 +167,7 @@ class Controller:
   if not (folder/'dataset.json').exists():
    # An interrupted build cannot be mistaken for a complete immutable dataset.
    if folder.exists():folder.rename(folder.with_name(run_id+'.incomplete.'+str(time.time_ns())))
-   built=build(self.root/'baseline/dataset-001',reviews,folder,self.root/'split-ledger.json',progress=lambda message:self.mark('building',reason=message))
+   built=build(self.root/'baseline/dataset-001',reviews,folder,self.root/'split-ledger.json',progress=lambda message:self.mark('building',reason=message),image_pool=self.root.parent/'training-objects')
    built.update(training_strategy=self.c.get('training_strategy','recording_balanced'),training_recipe=self.recipe,fingerprint=hashlib.sha256((built['fingerprint']+run_key).encode()).hexdigest());save(folder/'dataset.json',built)
   dataset=read(folder/'dataset.json')
   self.run_folder=folder
