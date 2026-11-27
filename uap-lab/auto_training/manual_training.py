@@ -32,8 +32,12 @@ class Control:
   return self.transaction(change)
  def claim(self):
   def change(state):
+   try:from .review_trigger import maybe_queue
+   except ImportError:from review_trigger import maybe_queue
+   maybe_queue(self.root,state,self.present(state)['busy'])
    request=state.get('request',{})
    if request.get('state') not in ('queued','running'):return {}
+   if request.get('state')=='queued':state['auto_review_since']=time.time()
    request.update(state='running',started_epoch=time.time());state['request']=request;return request
   return self.transaction(change)
  def progress(self,value):
