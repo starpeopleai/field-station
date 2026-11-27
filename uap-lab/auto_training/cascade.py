@@ -1,5 +1,5 @@
 """Durable manual training cycles: stable first, then a frozen leaderboard order."""
-import json,math,sys,time
+import json,math,sys,time,subprocess
 from pathlib import Path
 NAMES={'human':'Human-curated (stable)','experimental':'Human-curated (experimental)','hybrid':'Hybrid','machine':'Machine-only'}
 MEASURES={'accuracy','false_positive_rate','recall'}
@@ -50,6 +50,12 @@ def run_manual(controller,request):
     state['phase']='activation_pending';persist();return state
    if controller.state.get('phase')!='deployed':raise RuntimeError(controller.state.get('reason') or 'Stable training did not complete')
    state['steps']['human']=dict(state='complete',version=controller.state['active_version'],folder=controller.state['run_directory'])
+  except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as exc:
+   if isinstance(exc,subprocess.TimeoutExpired) or exc.returncode==255:
+    state['steps']['human']=dict(state='pending',error=str(exc))
+    state.update(phase='training_retry_pending',reason='Field connection interrupted; resuming saved training on the next check.')
+    persist();progress('training',state['reason']);return state
+   state['steps']['human']=dict(state='failed',error=str(exc));controller.mark('error',reason=str(exc))
   except Exception as exc:
    state['steps']['human']=dict(state='failed',error=str(exc))
   persist()

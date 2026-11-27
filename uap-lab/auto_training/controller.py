@@ -19,7 +19,13 @@ class Controller:
   transport=self.c.get('ssh_command',['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',self.c['host']])
   return subprocess.run([*transport,shlex.join(map(str,args))],check=True,**kwargs)
  def rpc(self,script,*args,timeout=360):
-  return json.loads(self.remote([self.python,self.app+'/uap-lab/auto_training/'+script,*args],capture_output=True,text=True,timeout=timeout).stdout)
+  status_call=script=='deploy.py' and args==('status',)
+  attempts=3 if status_call else 1
+  for attempt in range(attempts):
+   try:return json.loads(self.remote([self.python,self.app+'/uap-lab/auto_training/'+script,*args],capture_output=True,text=True,timeout=min(timeout,30) if status_call else timeout).stdout)
+   except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as exc:
+    if (isinstance(exc,subprocess.CalledProcessError) and exc.returncode!=255) or attempt+1>=attempts:raise
+    time.sleep(2)
  def mark(self,phase,**fields):
   if 'completed_fingerprint' in fields:fields['completed_recipe']=self.recipe
   self.state.update(phase=phase,updated_epoch=time.time(),**fields);save(self.root/'status.json',self.state)
@@ -28,6 +34,13 @@ class Controller:
   try:self.remote([self.python,self.app+'/uap-lab/auto_training/manual_training.py','progress','--json',json.dumps(dict(phase=phase,reason=self.state.get('reason')))],capture_output=True,text=True,timeout=10)
   except Exception:pass # Status delivery must never invalidate an evaluated model.
  def snapshot(self):
+  # A manual retry resumes its immutable dataset, not reviews arriving later.
+  previous=getattr(self,'resume_state',{})
+  if getattr(self,'manual_request_id',None) and previous.get('training_request_id')==self.manual_request_id and previous.get('training_recipe')==self.recipe:
+   folder=Path(previous.get('run_directory') or '/nonexistent')
+   fp=previous.get('fingerprint','')
+   if re.fullmatch('[a-f0-9]{64}',fp) and (folder/'candidate-policy.json').is_file() and (folder/'dataset.json').is_file() and (self.root/'reviews'/fp/'reviews.json').is_file():
+    return dict(fingerprint=fp,examples=previous['examples'])
   return self.rpc('snapshot.py','--lab',self.c['remote_lab'],'--out',self.app+'/auto-training/exports',timeout=self.c.get('snapshot_timeout_seconds',1800))
  def reviews_still_valid(self,fp,reviews):
   current=self.snapshot()
@@ -129,6 +142,7 @@ class Controller:
   if not cleanup.get('complete'):raise RuntimeError('Release backlog cleanup is incomplete')
   self.mark(self.state['phase'],pending_release=None,release_cleanup=cleanup,release_notice_queued_epoch=time.time())
  def tick(self):
+  self.resume_state=dict(self.state)
   self.notify_release()
   if self.recover():return
   snapshot=self.snapshot();fp=snapshot['fingerprint']
@@ -153,7 +167,7 @@ class Controller:
   self.state['validation_limits']=dataset.get('validation_limits',[])
   if dataset['blockers']:
    self.mark('waiting_for_data',reason=dataset['blockers'],completed_fingerprint=fp);return
-  self.mark('training',reason=None,candidate_version=dataset['fingerprint'],run_directory=str(folder))
+  self.mark('training',reason=None,candidate_version=dataset['fingerprint'],run_directory=str(folder),training_request_id=getattr(self,'manual_request_id',None))
   if not (folder/'candidate-policy.json').exists():self.run_script('train_candidate.py',['--folder',folder,'--lock',self.root/'training.lock'],folder)
   active=self.rpc('deploy.py','status');baseline=self.root/'incumbents'/active['version']
   if not (baseline/'candidate-policy.json').exists():
