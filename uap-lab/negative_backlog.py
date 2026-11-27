@@ -206,7 +206,11 @@ def run(data,settings,now,apply):
                         if not available:result['deferred']+=1;continue
                         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
                         except BlockingIOError:result['deferred']+=1;continue
-                        if version!=review_version(data):result['reason']='Reviews changed; retry next pass';break
+                        if version!=review_version(data):
+                            # Holding review.lock makes this refresh consistent with
+                            # committed saves; recheck each candidate against it.
+                            reviewed=human_events(data);version=review_version(data)
+                            result['review_index_refreshes']=result.get('review_index_refreshes',0)+1
                         if key in reviewed or protected(data,dict(kind='detection',id=key)):continue
                         event=read(folder/'event.json',{})
                         if not candidate(event) or now-event.get('created_epoch',now)<settings['grace_seconds']:continue
