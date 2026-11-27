@@ -50,3 +50,17 @@ class CascadeTests(unittest.TestCase):
    self.assertEqual(result['steps']['human']['state'],'failed')
    self.assertEqual(c.state['phase'],'error')
    self.assertIn('source filesystem',c.state['reason'])
+
+ def test_connection_timeout_preserves_request_for_retry(self):
+  import subprocess
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);c=self.setup_controller(root);calls=[]
+   def tick():
+    calls.append('human')
+    if len(calls)==1:raise subprocess.TimeoutExpired('status',30)
+    c.state.update(manual_request_id='retry',phase='deployed')
+   c.tick=tick
+   module=types.SimpleNamespace(retry_publications=lambda *a:{},freeze_inputs=lambda *a:{'frozen':True},train_lane=lambda cfg,cycle,lane:{'version':lane},compare=lambda *a:{'state':'complete'})
+   with patch.dict('sys.modules',{'cascade_training':module,'worker':types.SimpleNamespace(model_folder=lambda *a:root/'stable')}):
+    first=run_manual(c,{'id':'retry'});self.assertEqual(first['phase'],'training_retry_pending');self.assertTrue(pending(c,'retry'));self.assertEqual(first['steps']['human']['state'],'pending');self.assertEqual(len(first['steps']),1)
+    result=run_manual(c,{'id':'retry'});self.assertEqual(result['phase'],'complete');self.assertFalse(pending(c,'retry'))

@@ -145,6 +145,8 @@ class WatermarkTests(unittest.TestCase):
     def test_mark_and_url_remain_visible_on_dark_bright_and_standby(self):
         from broadcast_watermark import Watermark
         mark=Watermark();outputs=[]
+        # Isolate watermark pixels from the independently tested location overlay.
+        mark.location.draw=lambda *args, **kwargs: None
         for color,standby in [('black',False),('white',False),('black',True)]:
             canvas=Image.new('RGBA',(1280,720))
             mark.draw(canvas,Image.new('RGB',(1280,720),color),standby)

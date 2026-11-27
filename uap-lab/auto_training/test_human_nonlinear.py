@@ -22,3 +22,13 @@ class HumanRecipeTests(unittest.TestCase):
   rows[0]['human_confirmed']=False
   with self.assertRaises(ValueError):fit_head(x,rows,['anomalous','not_anomalous'])
 if __name__=='__main__':unittest.main()
+
+class RevisedRecipeTests(unittest.TestCase):
+ def test_v2_weights_keep_every_example_and_reduce_positive_class_mass(self):
+  from human_nonlinear import sample_weights,recipe_config
+  import numpy as np
+  rows=[dict(label='anomalous' if i<2 else 'not_anomalous',group=str(i//2),pixel_sha256=str(i)) for i in range(10)]
+  cfg=recipe_config('human_nonlinear_v2');w=sample_weights(rows,cfg['positive_mass'])
+  self.assertEqual(cfg['width'],128);self.assertEqual(cfg['epochs'],60)
+  self.assertTrue(np.all(w>0));self.assertAlmostEqual(float(w[:2].sum()/w.sum()),.25)
+  self.assertEqual(recipe_config('human_nonlinear_v1')['threshold'],.78)

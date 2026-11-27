@@ -1,7 +1,8 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync(__dirname+'/static/app-shell.js','utf8');
-const start=source.indexOf(' function render(state){',source.indexOf('// Clear analysis'));
+const start=source.indexOf(' function render(state){',source.indexOf("button.id='clearBacklog'"));
 const end=source.indexOf(' async function poll()',start);
+assert.ok(start>=0&&end>start,'Locate the Clear backlog renderer, not another header control');
 const messages=[],events=[];
 const context={watching:true,submitting:false,expectedRequest:'new',lastCompleted:'old',button:{},window:{dispatchEvent:e=>events.push(e),stationNotifications:{set:(...args)=>messages.push(args)}},CustomEvent:class{constructor(type){this.type=type}}};
 vm.createContext(context);vm.runInContext(source.slice(start,end),context);

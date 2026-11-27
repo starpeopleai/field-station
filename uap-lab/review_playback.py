@@ -6,7 +6,10 @@ def media_dir(data,key):
  if not re.fullmatch('[a-f0-9]{32}',key):raise ValueError('Invalid detection')
  runtime=os.environ.get('XDG_RUNTIME_DIR')
  if not runtime:return Path(data).parent/'notifications/outbox'/key
- return Path(runtime)/'review-videos'/hashlib.sha256(str(Path(data)).encode()).hexdigest()[:16]/key
+ identity=hashlib.sha256(str(Path(data)).encode()).hexdigest()[:16]
+ old=Path(runtime)/'review-videos'/identity/key
+ alternate=Path(data).parent/'review-playback'/identity/key
+ return alternate if alternate.exists() or not old.exists() else old
 
 def native_path(data,key):
  if not re.fullmatch('[a-f0-9]{32}',key):raise ValueError('Invalid detection')

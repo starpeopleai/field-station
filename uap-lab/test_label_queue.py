@@ -81,6 +81,16 @@ class QueueTests(unittest.TestCase):
   self.assertTrue(all(p.read_bytes()==raw for p,raw in before.items() if reviewed in p.parts or f'{11:032x}' in p.parts))
   self.assertGreater(result['media_bytes_deleted'],0)
   again=label_queue.clear_backlog(self.data);self.assertEqual(again['frames_cleared'],0);self.assertEqual(again['videos_cleared'],0)
+ def test_clear_preserves_starred_and_manual_queue_items(self):
+  root=self.root/'notifications/outbox';star=f'{1:032x}';manual=f'{2:032x}'
+  (self.data/'starred-objects.json').write_text(json.dumps({'objects':{f'review:{star}:{star}':{}}}))
+  event=root/manual/'event.json';value=json.loads(event.read_text());value.update(kind='manual_recording',manual_session_id='session');event.write_text(json.dumps(value))
+  result=label_queue.clear_backlog(self.data)
+  self.assertEqual(result['frames_cleared'],1)
+  for key in (star,manual):
+   self.assertTrue((root/key/'native-object.png').exists())
+   self.assertFalse((root/key/'label-queue-dismissed.json').exists())
+
  def test_media_cleanup_rechecks_reviews_and_active_producer(self):
   from backlog_media import cleanup
   root=self.root/'notifications/outbox';key=f'{1:032x}'

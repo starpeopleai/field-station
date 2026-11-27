@@ -79,7 +79,7 @@ class LibraryTests(QueueTests):
    self.assertTrue(result['retryable']);self.assertFalse(result['saved']);self.assertEqual(result['request_id'],item['request_id'])
   finally:release.set();worker.join()
  def test_model_labels_are_not_reviews_or_training(self):
-  self.assertEqual(listing(self.data)['counts'],dict(all=3,anomalous=1,not_anomalous=2,needs_review=1,human_reviewed=0,human_reviewed_anomalous=0))
+  self.assertEqual(listing(self.data)['counts'],dict(all=3,anomalous=1,not_anomalous=2,needs_review=1,human_reviewed=0,human_reviewed_anomalous=0,starred=0))
   self.assertFalse((self.data/'email-reviews').exists())
  def test_needs_review_contains_only_unreviewed_anomalies(self):
   page=listing(self.data,'needs_review')
@@ -176,3 +176,14 @@ class PendingResetTests(QueueTests):
   self.assertFalse(result[0]['saved']);self.assertTrue(result[0]['discarded']);self.assertTrue(result[1]['saved'])
   rows=json.loads((self.data/'email-reviews/training-manifest.json').read_text())['examples']
   self.assertEqual([r['event_id'] for r in rows],[f'{2:032x}'])
+
+class StarredLibraryTests(LibraryTests):
+ def test_saved_star_is_returned_in_listing_and_filter(self):
+  from detection_actions import set_star
+  key=f'{1:032x}'
+  set_star(self.data,dict(id=key,starred=True))
+  result=listing(self.data,'starred')
+  self.assertEqual(result['total'],1);self.assertEqual(result['counts']['starred'],1)
+  self.assertTrue(result['items'][0]['starred']);self.assertEqual(result['items'][0]['id'],key)
+  set_star(self.data,dict(id=key,starred=False))
+  self.assertEqual(listing(self.data,'starred')['total'],0)

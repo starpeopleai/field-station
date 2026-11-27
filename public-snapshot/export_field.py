@@ -31,7 +31,7 @@ def export(root,app,public):
  for page in ('/','/label-videos','/models','/metrics'):
   raw=get(page).decode();files['pages/'+('index' if page=='/' else page[1:])+'.html']=raw.encode()
   assets.update(re.findall(r'(?:src|href)=["\'](/[^"\'?#]+\.(?:js|css|png|svg|webp|woff2))(?:\?[^"\']*)?["\']',raw))
- assets.update(['/fonts/license.txt','/public-readonly.js','/public-readonly.css','/ufo-engraving.png'])
+ assets.update(['/starpeople-mark.png','/favicon.png','/fonts/license.txt','/public-readonly.js','/public-readonly.css','/ufo-engraving.png'])
  done=set()
  while assets-done:
   asset=sorted(assets-done)[0];done.add(asset)

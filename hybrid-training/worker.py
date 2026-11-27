@@ -23,7 +23,7 @@ def model_folder(root,version):
 
 def finish_training(root,folder,code,human_root,state):
  built=read(folder/'dataset.json');key=built['fingerprint']
- if state.get('publication',{}).get('version')!=key:state.pop('publication',None)
+ if (state.get('publication') or {}).get('version')!=key:state.pop('publication',None)
  state.pop('publication_error',None)
  state.update(phase='training');save(root/'status.json',state)
  with (folder/'training.log').open('a') as log:subprocess.run([sys.executable,str(code/'uap-lab/auto_training/train_candidate.py'),'--folder',str(folder),'--lock',str(human_root/'training.lock')],stdout=log,stderr=log,check=True,timeout=21600)
@@ -38,6 +38,7 @@ def finish_training(root,folder,code,human_root,state):
   with CropClassifier(tools/'crop_worker',compiled,key,timeout=120) as classifier:student_policy['night_context_confirmation']=qualify(folder,built,classifier,student_policy['thresholds']['anomalous'])
  else:student_policy['night_context_confirmation']=dict(enabled=False,reason='Machine-only model does not calibrate on human labels')
  save(folder/'candidate-policy.json',student_policy)
+ if built.get('human_grounded') and not built.get('pseudo_labels') and (root/'reset-pending.json').exists():(root/'reset-pending.json').unlink()
  state.update(phase='shadow_ready',shadow_folder=str(folder),shadow_version=key,shadow_seed_only=False,trained_epoch=time.time(),human_examples=sum(bool(row.get('human_confirmed')) for row in built['samples']));save(root/'status.json',state)
  try:
   from publish import publish
@@ -50,6 +51,7 @@ def verify_storage(root,config):
  if not volume.is_mount() or not Path(root).resolve().is_relative_to(volume.resolve()):raise ValueError('HQ training volume unavailable')
  if config.get('storage_volume_id') and (volume/'.training-volume').read_text().strip()!=config['storage_volume_id']:raise ValueError('Wrong HQ training volume')
 
+
 def run(c):
  root=Path(c['root']);machine=c.get('lane')=='machine_only'
  verify_storage(root,c)
@@ -57,6 +59,7 @@ def run(c):
  with (root/'worker.lock').open('a') as lock:
   try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
   except BlockingIOError:return
+  if machine and (root/'reset-pending.json').exists():return
   state=read(root/'status.json',{});state['training_lane']=c.get('lane','hybrid');pool=read(root/'pseudo-labels.json',{});pairs=read(root/'comparisons.json',{})
   code=Path(c['code']);sys.path[:0]=[str(code/'uap-lab/auto_training'),str(code/'uap-lab'),str(code/'uap-lab/recognition')]
   if state.get('shadow_folder') and not (root/'publications'/(state['shadow_version']+'.json')).exists():
@@ -82,7 +85,7 @@ def run(c):
   backup=(Path(c['backup'])/'current').resolve();manifest=read(backup/'email-reviews/training-manifest.json',{});truth={r.get('sample_id',r['event_id']):(r['label'],r.get('reviewed_epoch',0)) for r in manifest.get('examples',[]) if r.get('human_confirmed') and not r.get('deleted')}
   reviewed.update(truth)
   for key in list(pool):
-   if not machine and (key in reviewed or pool[key]['pixel_sha256'] in human_pixels):pool.pop(key)
+   if key in reviewed or pool[key]['pixel_sha256'] in human_pixels:pool.pop(key)
   for key,row in pairs.items():
    row['truth']=truth[key][0] if key in truth and truth[key][1]>row.get('scored_epoch',float('inf')) else None
   candidates=[r['id'] for r in records if r['kind']=='detection' and not r.get('human_reviewed') and r['id'] not in reviewed and r['id'] not in pairs]
@@ -152,7 +155,7 @@ def run(c):
   save(root/'status.json',state)
   if not c.get('automatic_training_enabled',True):return
   if machine:
-   folder,blockers=machine_dataset(root,code)
+   folder,blockers=machine_dataset(root,code,human)
    if blockers:
     state.update(phase='collecting',reason='Machine-only training requires valid machine-labeled examples of both classes.',dataset_blockers=blockers);save(root/'status.json',state);return
    if time.time()-state.get('trained_epoch',0)<c.get('training_interval_seconds',86400):return

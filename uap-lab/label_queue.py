@@ -68,7 +68,7 @@ def lease_videos(data,keys):
  """Keep actively displayed review sources local; idle tabs expire naturally."""
  if not keys:return
  import fcntl,uuid
- data=Path(data);now=time.time();path=data/'review-leases.json'
+ data=Path(data);data.mkdir(exist_ok=True);now=time.time();path=data/'review-leases.json'
  with (data/'review-leases.lock').open('a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX)
   previous=read(path,{})
@@ -170,13 +170,8 @@ def _clear_backlog(data,cutoff=None):
   temporary.write_text(json.dumps(value));temporary.replace(path)
  from review_retention import load_records
  import fcntl
- def reviewed_events():
-  manifest=data/'email-reviews/training-manifest.json';examples=data/'email-reviews/examples'
-  try:
-   if examples.stat().st_mtime_ns>manifest.stat().st_mtime_ns:raise ValueError('Stale review index')
-   reviews=read(manifest,{})['examples']
-  except (OSError,KeyError,ValueError):reviews=[r for p,r in load_records(examples,'review.json')]
-  return {r.get('event_id') for r in reviews if r.get('human_confirmed') and not r.get('deleted')}
+ from backlog_safety import review_stamp, reviewed_events as safe_reviewed_events, bookmark_lease, protected as safety_protected
+ def reviewed_events():return safe_reviewed_events(data)
  # An older index may omit a new review, but per-object locking below catches
  # that. Skipping already-known human reviews is conservative and avoids IO.
  known_reviewed={r.get('event_id') for r in read(data/'email-reviews/training-manifest.json',{}).get('examples',[]) if r.get('human_confirmed') and not r.get('deleted')}
@@ -188,11 +183,12 @@ def _clear_backlog(data,cutoff=None):
  cached_stamp=object();reviewed=set();manifest=reviews/'training-manifest.json'
  with (audit/'actions.jsonl').open('a') as log:
   for row in candidates:
-   with (reviews/'review.lock').open('a') as lock:
+   with bookmark_lease(data), (reviews/'review.lock').open('a') as lock:
     fcntl.flock(lock,fcntl.LOCK_EX)
-    current_stamp=manifest.stat().st_mtime_ns if manifest.exists() else None
+    current_stamp=review_stamp(data)
     if current_stamp!=cached_stamp:reviewed=reviewed_events();cached_stamp=current_stamp
     key=row['id']
+    if safety_protected(data,row):protected.append(key);continue
     if row['kind']=='video':
      target=data/'videos'/key;meta=read(target/'video.json',{});review=read(target/'review.json',{})
      if meta.get('created',0)>cutoff:continue
@@ -246,7 +242,7 @@ def review_status(data, items):
  if not isinstance(items,list) or len(items)>500:raise ValueError('Choose at most 500 queue items')
  for item in items:
   if not isinstance(item,dict) or item.get('kind') not in ('video','detection') or not re.fullmatch('[a-f0-9]{32}',str(item.get('id',''))):raise ValueError('Invalid queue item')
- data=Path(data);lease_videos(data,[item['id'] for item in items if item['kind']=='video']);examples=data/'email-reviews/examples';manifest=data/'email-reviews/training-manifest.json'
+ data=Path(data);lease_videos(data,[item['id'] for item in items]);examples=data/'email-reviews/examples';manifest=data/'email-reviews/training-manifest.json'
  try:
   index=read(manifest,{})['examples']
   if examples.stat().st_mtime_ns>manifest.stat().st_mtime_ns:raise ValueError('Stale index')
@@ -294,3 +290,15 @@ def review_status(data, items):
    import uuid
    temp=diagnostic.with_suffix('.'+uuid.uuid4().hex+'.tmp');temp.write_text(json.dumps(pending_diagnostics));temp.replace(diagnostic)
  return dict(reviewed=closed,confirmed=confirmed,acknowledged=acknowledged)
+
+
+def renew_review_leases(data,value):
+ """Renew displayed and unsaved detections without touching review labels."""
+ keys=value.get('ids')
+ if not isinstance(keys,list) or len(keys)>10000:raise ValueError('Invalid review lease list')
+ if any(not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key) for key in keys):raise ValueError('Invalid detection ID')
+ marks=read(Path(data)/'omitted-objects.json',{}).get('objects',{})
+ omitted=[key for key in set(keys) if key in marks]
+ active=set(keys)-set(omitted)
+ lease_videos(data,active)
+ return dict(protected=len(active),expires_in=900,omitted=omitted)

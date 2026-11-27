@@ -8,12 +8,18 @@ from spool_events import atomic
 def export_event(root,path):
     event=json.loads(path.read_text())
     if event.get('state')=='exported':return
+    sustained=event.get('kind')=='sustained_motion'
+    if sustained:
+        from sustained_motion import index_session
+        index_session(lab.DATA,event)
     folder=lab.STATION/'sessions'/event['session_id']
     if (folder/'manifest.json').exists():
         event.update(state='exported',exported_epoch=time.time());atomic(path,event);return
     generation=root/event['generation'];entries=[json.loads(line) for line in (generation/'segments-index.jsonl').read_text().splitlines()]
     relevant=[s for s in entries if s['end']>event['start_pts'] and s['start']<event['end_pts']]
     if not relevant:return
+    if sustained and (relevant[0]['start']>event['start_pts']+.05 or any(b['start']-a['end']>.05 for a,b in zip(relevant,relevant[1:]))):
+        raise ValueError('Sustained event source has a gap; keeping the original segments for recovery')
     closed=(generation/'closed.json').exists()
     if relevant[-1]['end']<event['end_pts'] and not closed:return
     folder=lab.STATION/'sessions'/event['session_id'];folder.mkdir(exist_ok=True);segments_dir=folder/'buffer-segments';segments_dir.mkdir(exist_ok=True)
@@ -42,6 +48,7 @@ def export_event(root,path):
     rfpath=folder/'rf.jsonl';tmp=rfpath.with_suffix('.tmp');tmp.write_text(''.join(json.dumps(r)+'\n' for r in rf));tmp.replace(rfpath)
     atomic(folder/'buffer-state.json',dict(state='queued',folder=str(folder),requested_start_epoch=anchor+start,requested_end_epoch=anchor+end,requested_prebuffer_start_epoch=anchor+event['start_pts'],segments=segments,tail_complete=end>=event['end_pts']))
     manifest=dict(id=event['session_id'],title='Provisional motion',state='completed',created=event['created'],started_epoch=anchor+start,started_at=datetime.fromtimestamp(anchor+start,timezone.utc).isoformat(),stopped_epoch=anchor+end,elapsed_seconds=end-start,buffered_capture=True,provisional=True,capture_origin='provisional_motion',classification_state='pending',video_archive='video.mkv',video_playback=dict(state='queued',file='video.mp4'),frame_export_mode='selected',frame_fps=60,video_fps=60,frames=dict(state='queued',mode='selected',fps=60,count=0),pre_roll_seconds=10,pre_roll_actual_seconds=event['onset_pts']-start,pre_roll_complete=event['onset_pts']-start>=9.99,post_roll_seconds=10,post_roll_actual_seconds=max(0,end-event.get('last_seen_pts',event['onset_pts'])),post_roll_complete=end-event.get('last_seen_pts',event['onset_pts'])>=9.99,capture_interrupted=event.get('interrupted',False),window_limited=event.get('finish_reason')=='window_limit' or event['end_pts']-event['start_pts']>=59.99,buffer_tail_complete=end>=event['end_pts'],rf_records=len(rf),spool_generation=event['generation'],timing='Original capture PTS retained; UTC is host receipt time, not calibrated exposure time.',files={})
+    if sustained:manifest.update(title='Sustained motion',capture_origin='sustained_motion',window_limited=False)
     from station_location import location_at
     manifest['observation_location']=location_at(lab.STATION,manifest['started_epoch'])
     manifest['location_scope']='session_start'

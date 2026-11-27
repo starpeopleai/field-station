@@ -23,3 +23,25 @@ class TuningTests(unittest.TestCase):
  def test_reserved_groups_never_enter_future_training(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'decision-tuning';p.mkdir();(p/'reservations.json').write_text(json.dumps(dict(groups=['run-a'],pixels=['p1'])));allowed=training_filter(d);self.assertFalse(allowed({'group':'machine:run-a'}));self.assertFalse(allowed({'generation':'run-b','pixel_sha256':'p1'}));self.assertTrue(allowed({'generation':'run-b','pixel_sha256':'p2'}))
+ def test_review_box_replay_does_not_invent_size_or_context_veto(self):
+  row=dict(self.row('a','anomalous',.9),native_size=4,suppressed=True)
+  self.assertEqual(measure([row],dict(anomaly_threshold=.8,minimum_native_size=32))['tp'],1)
+ def test_safe_can_improve_weak_model_without_losing_any_recall(self):
+  baseline=dict(recall=.8,false_positive_rate=.1,balanced_accuracy=.85)
+  candidate=dict(recall=.8,false_positive_rate=.05,balanced_accuracy=.875)
+  self.assertTrue(safe(candidate,baseline))
+  self.assertFalse(safe(dict(candidate,recall=.79),baseline))
+ def test_benchmark_scores_require_matching_model_and_revision(self):
+  from decision_tuning import benchmark_rows
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);(root/'status.json').write_text(json.dumps(dict(state='complete',versions={'hybrid':'old'},settings_revisions={'hybrid':1})))
+   self.assertEqual(benchmark_rows(root,'new',1),[])
+   self.assertEqual(benchmark_rows(root,'old',2),[])
+ def test_reservation_growth_is_bounded_and_existing_groups_preserved(self):
+  from decision_tuning_worker import reserve
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);p=root/'decision-tuning';p.mkdir();(p/'reservations.json').write_text(json.dumps(dict(groups=['existing'],pixels=[])))
+   rows=[self.row('group-'+str(i),'anomalous',.99) for i in range(30)]
+   selected=reserve(root,rows,maximum_recordings=8);saved=json.loads((p/'reservations.json').read_text())
+   self.assertEqual(len(saved['groups']),8);self.assertIn('existing',saved['groups']);self.assertEqual(len(selected),7)
+   self.assertEqual(reserve(root,[self.row('new-recording','anomalous',.99)],maximum_recordings=8),[])

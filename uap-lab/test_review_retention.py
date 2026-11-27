@@ -1,4 +1,4 @@
-import hashlib,json,tempfile,unittest
+import fcntl,hashlib,json,tempfile,unittest
 from pathlib import Path
 from review_retention import cycle
 from retired_data import save
@@ -12,6 +12,24 @@ class RetentionTests(unittest.TestCase):
   self.record=dict(event_id=self.key,sample_id=self.key,human_confirmed=True,label='not_anomalous',reviewed_epoch=1,generation='run-abc',pts_seconds=5,native_crop_sha256=hashlib.sha256(b'training').hexdigest())
   save(self.crop.parent/'review.json',self.record)
  def tearDown(self):self.tmp.cleanup()
+ def test_discovery_releases_shared_media_lock_but_deletion_holds_it(self):
+  from unittest.mock import patch
+  import review_retention
+  original_load=review_retention.load_records;original_unlink=Path.unlink;seen=[]
+  def probe(held):
+   with (self.data/'review-media.lock').open('a') as lock:
+    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:self.assertTrue(held)
+    else:self.assertFalse(held)
+  def load(*args,**kwargs):
+   probe(False);return original_load(*args,**kwargs)
+  def unlink(path,*args,**kwargs):
+   if path in [self.event/'source-frame.png',self.event/'review.mp4']:
+    probe(True);seen.append(path)
+   return original_unlink(path,*args,**kwargs)
+  with patch.object(review_retention,'load_records',load),patch.object(Path,'unlink',unlink):
+   cycle(self.data,self.sessions,{})
+  self.assertEqual(len(seen),2)
  def test_session_cleanup_cannot_outrun_event_snapshot(self):
   from unittest.mock import patch
   import review_retention

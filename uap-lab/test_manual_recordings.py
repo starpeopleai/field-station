@@ -34,6 +34,17 @@ class ManualRecordingsTests(unittest.TestCase):
    row=listing(self.data,self.station)['items'][0]
    self.assertEqual(row['label'],'anomalous');self.assertTrue(row['human_reviewed'])
    self.assertEqual(bool(row['archive_url']),state=='verified')
+ def test_pin_moves_older_recording_across_pages_and_unpin_restores_order(self):
+  from review_pins import update
+  ids=['20261109T055133Z-704e15','20261109T055847Z-dbe797','20261109T061521Z-5f76f6']
+  for sid in ids:self.add(sid)
+  key='manual:'+ids[0]
+  update(self.data,dict(id=key,pinned=True))
+  first=listing(self.data,self.station,limit=1)
+  second=listing(self.data,self.station,before=first['next_cursor'],limit=2)
+  self.assertEqual([r['session_id'] for r in first['items']+second['items']],[ids[0],ids[2],ids[1]])
+  update(self.data,dict(id=key,pinned=False))
+  self.assertEqual([r['session_id'] for r in listing(self.data,self.station)['items']],ids[::-1])
  def test_cursor_and_nonmanual_exclusion(self):
   self.add('20261109T055133Z-704e15');self.add('20261109T055847Z-dbe797')
   self.add('20261109T061521Z-5f76f6',origin='provisional_motion')

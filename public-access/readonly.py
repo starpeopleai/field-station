@@ -7,7 +7,7 @@ from urllib.parse import urlsplit, parse_qs, urlencode
 
 PAGES={'/models','/','/metrics','/label-videos','/tracks','/labels','/events','/training'}
 ASSETS={'/'+name+ext for name in ('app','app-shell','style','metrics','label-videos','tracks','labels','events','email-review','maintenance') for ext in ('.js','.css')}
-ASSETS.update({'/detections.js','/model-inspector.js','/model-inspector.css','/review-filters.js','/review-filters.css','/observation-metrics.js','/observation-metrics.css','/ce5.js','/ufo-engraving.png','/models.js','/models-data.js','/models.css'})
+ASSETS.update({'/model-score-history.js','/starpeople-mark.png','/favicon.png','/detections.js','/model-inspector.js','/model-inspector.css','/review-filters.js','/review-filters.css','/observation-metrics.js','/observation-metrics.css','/ce5.js','/ufo-engraving.png','/models.js','/models-data.js','/models.css'})
 ASSETS.update('/fonts/IBMPlexMono-'+name+'.woff2' for name in ('Regular','SemiBold','Bold'))
 JSON_ROUTES={
  '/api/objects':{'view','classification','review_status','before','limit'},

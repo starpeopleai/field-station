@@ -14,3 +14,26 @@ class BenchmarkTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as temporary:
    root=Path(temporary);(root/'status.json').write_text(json.dumps(dict(shadow_folder=str(root/'baseline'),shadow_seed_only=False)))
    self.assertEqual(experimental_models(dict(experimental_root=str(root))),{'experimental':root/'baseline'})
+ def test_rotation_requires_its_own_trained_artifact(self):
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);config=dict(rotation_root=str(root))
+   self.assertEqual(experimental_models(config),{})
+   (root/'status.json').write_text(json.dumps(dict(shadow_folder=str(root/'rotated'),shadow_seed_only=False)))
+   self.assertEqual(experimental_models(config),{'rotation':root/'rotated'})
+ def test_inference_reuse_requires_identical_weights_and_enabled_color_policy(self):
+  from benchmark_worker import inference_key
+  a=dict(version='v1',thresholds={'anomalous':.6},color_decision={'color_evidence':False,'minimum_color_fraction':.2})
+  b=dict(a,thresholds={'anomalous':.7},color_decision={'color_evidence':False,'minimum_color_fraction':.5})
+  self.assertEqual(inference_key(a),inference_key(b))
+  self.assertNotEqual(inference_key(a),inference_key(dict(b,version='v2')))
+  self.assertNotEqual(inference_key(a),inference_key(dict(b,color_decision={'color_evidence':True})))
+ def test_previous_probabilities_are_pixel_and_policy_bound(self):
+  from benchmark_worker import previous_scores,inference_key
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);run=root/'runs/one';(run/'human').mkdir(parents=True);policy={'version':'v1'}
+   (run/'inference-contracts.json').write_text(json.dumps({'human':inference_key(policy)}))
+   (run/'live-sample.json').write_text(json.dumps({'samples':[{'origin':'a','pixel_sha256':'pixels'}]}))
+   (run/'human/0000000.json').write_text(json.dumps({'predictions':[{'origin':'a','score':.8}]}))
+   state={'state':'complete','run':str(run)};scores=previous_scores(root,state,policy)
+   self.assertEqual(scores[('a','pixels')],.8);self.assertNotIn(('a','changed'),scores)
+   self.assertEqual(previous_scores(root,state,{'version':'v2'}),{})

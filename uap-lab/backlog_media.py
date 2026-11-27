@@ -2,6 +2,7 @@
 import json,re,os,fcntl
 from pathlib import Path
 from retired_data import read,save
+from backlog_safety import review_stamp, reviewed_events, bookmark_lease, protected as safety_protected
 
 MEDIA={'.png','.jpg','.jpeg','.webp','.mp4','.mov','.mkv','.ts','.wav','.flac','.avi'}
 
@@ -12,15 +13,10 @@ def cleanup(data,audit):
  manifest=reviews/'training-manifest.json';stamp=object();reviewed=set()
  def refresh_reviews():
   nonlocal stamp,reviewed
-  current=manifest.stat().st_mtime_ns if manifest.exists() else None
+  current=review_stamp(data)
   if current==stamp:return
-  try:
-   if (reviews/'examples').stat().st_mtime_ns>current:raise ValueError('Stale index')
-   rows=read(manifest,{})['examples']
-  except (OSError,KeyError,TypeError,ValueError):
-   from review_retention import load_records
-   rows=[r for p,r in load_records(reviews/'examples','review.json')]
-  reviewed={r.get('event_id') for r in rows if r.get('human_confirmed') and not r.get('deleted')};stamp=current
+  reviewed=reviewed_events(data);stamp=current
+
  outbox=data.parent/'notifications/outbox'
  active={g.get('id') for g in read(outbox/'producer-state.json',{}).get('groups',[])}
  deleted=0;size=0;protected=[];deferred=[]
@@ -30,9 +26,11 @@ def cleanup(data,audit):
    if not re.fullmatch('[a-f0-9]{32}',key):raise ValueError('Invalid cleared ID')
    from review_playback import event_lease
    from contextlib import nullcontext
-   with event_lease(outbox/key) if row['kind']=='detection' else nullcontext(True) as available,(reviews/'review.lock').open('a') as lock:
+   with bookmark_lease(data), (event_lease(outbox/key) if row['kind']=='detection' else nullcontext(True)) as available,(reviews/'review.lock').open('a') as lock:
     if not available:deferred.append(key);continue
     fcntl.flock(lock,fcntl.LOCK_EX);refresh_reviews()
+    if safety_protected(data,row):protected.append(key);continue
+    active={g.get('id') for g in read(outbox/'producer-state.json',{}).get('groups',[])}
     if row['kind']=='detection':
      target=outbox/key
      if key in reviewed or read(target/'review-completion.json',{}).get('completed'):

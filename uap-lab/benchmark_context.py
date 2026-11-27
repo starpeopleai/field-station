@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from PIL import Image
 from model_settings import read
+from classification_taxonomy import canonical_label
 from object_model_scores import crop
 
 def collect(data,samples):
@@ -16,7 +17,7 @@ def collect(data,samples):
     aid=parts[1]
     if len(parts)!=2 or not aid or any(c not in '0123456789abcdef-' for c in aid):raise ValueError('Invalid reviewed origin')
     record=read(data/'email-reviews/examples'/aid/'review.json',{})
-    if record.get('deleted') or not record.get('human_confirmed') or record.get('label')!=sample['label']:raise ValueError('Review changed since training snapshot')
+    if record.get('deleted') or not record.get('human_confirmed') or canonical_label(record.get('label'))!=sample['label']:raise ValueError('Review changed since training snapshot')
     event=record['event_id'];row=dict(kind='review',id='review:'+event+':'+aid,image_url='/api/email-review/image?'+urlencode(dict(id=event,annotation=aid)))
     raw=crop(data,row)
    elif prefix=='lab':
@@ -24,7 +25,7 @@ def collect(data,samples):
     folder=data/'videos'/parts[1]
     if not folder.resolve().is_relative_to((data/'videos').resolve()):raise ValueError('Unsafe annotation path')
     record=next((r for r in read(folder/'annotations.json',[]) if r.get('id')==parts[2]),{})
-    if record.get('deleted') or record.get('label')!=sample['label']:raise ValueError('Annotation changed since training snapshot')
+    if record.get('deleted') or canonical_label(record.get('label'))!=sample['label']:raise ValueError('Annotation changed since training snapshot')
     path=folder/record['image']
     if path.is_symlink() or not path.resolve().is_relative_to(folder.resolve()):raise ValueError('Unsafe annotation image')
     raw=path.read_bytes()

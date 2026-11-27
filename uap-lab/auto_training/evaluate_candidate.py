@@ -53,7 +53,7 @@ def evaluate(folder,baseline_package,baseline_policy,preserve_thresholds=False):
  base_cal=baseline_metrics(calibration,base_p[:n])
  thresholds,evidence=calibrate_against_incumbent(calibration,candidate_p[:n],dataset['classes'],base_cal)
  candidate_policy=json.loads((folder/'candidate-policy.json').read_text())
- if preserve_thresholds or candidate_policy.get('focused_cloud_correction') or candidate_policy.get('training_recipe')=='human_nonlinear_v1':thresholds=candidate_policy['thresholds'];evidence=candidate.get('correction_calibration',{})
+ if preserve_thresholds or candidate_policy.get('focused_cloud_correction') or candidate_policy.get('training_recipe') in ('human_nonlinear_v1','human_nonlinear_v2'):thresholds=candidate_policy['thresholds'];evidence=candidate.get('correction_calibration',{})
  candidate.update(deferred_classes=candidate_policy.get('deferred_classes',[]),thresholds=thresholds,calibration=evidence,calibration_runtime='Vision/CoreML',calibration_policy='incumbent-per-class-false-positive-budget')
  candidate_policy=json.loads((folder/'candidate-policy.json').read_text());candidate_policy['thresholds']=thresholds
  if binary:

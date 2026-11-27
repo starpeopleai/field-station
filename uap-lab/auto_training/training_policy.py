@@ -62,7 +62,14 @@ def machine_benchmark_training(dataset):
     if not enabled:return False
     if not dataset.get('shadow_only'):raise ValueError('Machine-only benchmark training must remain shadow-only')
     rows=dataset['samples']
-    if not rows or any(r.get('human_confirmed') or r.get('label_source')!='machine' or r.get('split')!='train' for r in rows):raise ValueError('Machine-only training accepts exclusively machine-labeled training rows')
+    if dataset.get('human_grounded'):
+        human=[r for r in rows if r.get('human_confirmed')]
+        if {r['label'] for r in human}!={'anomalous','not_anomalous'}:raise ValueError('Reviewed foundation requires both classes')
+        if any(r.get('label_source')!=('human' if r.get('human_confirmed') else 'machine') for r in rows):raise ValueError('Training label provenance missing')
+        human_pixels={r['pixel_sha256'] for r in human}
+        if any(r['pixel_sha256'] in human_pixels for r in rows if not r.get('human_confirmed')):raise ValueError('Machine label conflicts with reviewed pixels')
+        if any(not r.get('pseudo_label') or r.get('split')!='train' for r in rows if not r.get('human_confirmed')):raise ValueError('Machine additions must be weighted training examples')
+    elif not rows or any(r.get('human_confirmed') or r.get('label_source')!='machine' or r.get('split')!='train' for r in rows):raise ValueError('Legacy machine dataset contains unexpected human rows')
     if {r['label'] for r in rows}!={'anomalous','not_anomalous'}:raise ValueError('Both machine-labeled classes are required')
     if dataset.get('fixed_anomaly_threshold')!=0.8:raise ValueError('Unexpected experimental fixed threshold')
     return True

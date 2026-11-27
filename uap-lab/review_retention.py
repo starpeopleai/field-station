@@ -36,7 +36,9 @@ def cycle(data,sessions,groups,apply=True):
  from object_omission import retry_pending
  retry_pending(data)
  reviews=data/'email-reviews';reviews.mkdir(exist_ok=True)
- with (data/'review-media.lock').open('a') as lease:
+ # Serialize retention scans without monopolizing all media maintenance while
+ # reading historical metadata. The shared lock protects actual mutations below.
+ with (data/'review-retention.lock').open('a') as lease:
   try:fcntl.flock(lease,fcntl.LOCK_EX|fcntl.LOCK_NB)
   except BlockingIOError:return dict(busy=True)
   return _cycle(data,sessions,groups,apply)
@@ -54,7 +56,8 @@ def _cycle(data,sessions,groups,apply=True):
  @contextmanager
  def guard(event_key=None):
   nonlocal latest_version,latest_reviews
-  with (data/'email-reviews/review.lock').open('a') as lock:
+  with (data/'review-media.lock').open('a') as media,(data/'email-reviews/review.lock').open('a') as lock:
+   fcntl.flock(media,fcntl.LOCK_EX)
    fcntl.flock(lock,fcntl.LOCK_EX)
    current_version=version()
    if current_version!=snapshot:

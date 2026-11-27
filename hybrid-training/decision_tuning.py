@@ -39,27 +39,27 @@ def sufficient(rows):
 def measure(rows,settings):
  counts=dict(tp=0,fp=0,tn=0,fn=0)
  for r in rows:
-  positive=r['score']>=settings['anomaly_threshold'] and r['native_size']>=settings['minimum_native_size'] and not r.get('suppressed',False)
+  positive=r['score']>=settings['anomaly_threshold']
   truth=r['label']=='anomalous';counts[('t' if positive==truth else 'f')+('p' if positive else 'n')]+=1
  tp,fp,tn,fn=[counts[k] for k in ('tp','fp','tn','fn')];recall=tp/(tp+fn) if tp+fn else 0;fpr=fp/(fp+tn) if fp+tn else 0
  return dict(counts,recall=recall,false_positive_rate=fpr,balanced_accuracy=(recall+1-fpr)/2)
 
 def safe(candidate,baseline):
- return candidate['recall']>=max(.9,baseline['recall']) and candidate['false_positive_rate']<=baseline['false_positive_rate'] and candidate['balanced_accuracy']>=baseline['balanced_accuracy']
+ return candidate['recall']>=baseline['recall'] and candidate['recall']>0 and candidate['false_positive_rate']<=baseline['false_positive_rate'] and candidate['balanced_accuracy']>=baseline['balanced_accuracy']
 
 def tune(rows,baseline):
  fit,guard=split(rows)
  coverage={name:dict(total=len(part),positive=sum(r['label']=='anomalous' for r in part),negative=sum(r['label']=='not_anomalous' for r in part),recordings=len(set().union(*(groups(r) for r in part))) if part else 0) for name,part in [('tuning',fit),('validation',guard)]}
  if not sufficient(fit) or not sufficient(guard):return dict(accepted=False,state='collecting',coverage=coverage,message='Collecting independent positive and negative examples across recordings.')
  baseline_fit=measure(fit,baseline);best=dict(baseline);best_score=baseline_fit
- # Never relax an unmeasured nighttime context requirement. This first tuner
- # searches threshold and size; qualified context/color policy stays fixed.
- for threshold in sorted({baseline['anomaly_threshold'],.8,.85,.9,.95,.98}):
-  if threshold<baseline['anomaly_threshold']:continue
-  for size in sorted({baseline['minimum_native_size'],8,10,12,16,24,32}):
-   candidate=dict(baseline,anomaly_threshold=threshold,minimum_native_size=size);result=measure(fit,candidate)
-   if safe(result,baseline_fit) and result['balanced_accuracy']>best_score['balanced_accuracy']:
-    best=candidate;best_score=result
+ # Replay the same full-review-box decision used by live inference. Proposal
+ # size is an upstream detection control, not a veto on an existing review box.
+ scores=sorted({float(r['score']) for r in fit if math.isfinite(r['score']) and 0<=r['score']<=1})
+ candidates={baseline['anomaly_threshold'],*[math.nextafter(v,1.) for v in scores[::max(1,len(scores)//256)]]}
+ for threshold in sorted(candidates):
+  candidate=dict(baseline,anomaly_threshold=threshold);result=measure(fit,candidate)
+  if safe(result,baseline_fit) and result['balanced_accuracy']>best_score['balanced_accuracy']:
+   best=candidate;best_score=result
  baseline_guard=measure(guard,baseline);candidate_guard=measure(guard,best)
  accepted=best!=baseline and safe(candidate_guard,baseline_guard)
  return dict(accepted=accepted,state='tuned' if accepted else 'retained',values=best if accepted else baseline,coverage=coverage,baseline_tuning=baseline_fit,tuning=best_score,baseline_validation=baseline_guard,validation=candidate_guard,independent_groups=True,message='Validated automatic settings applied.' if accepted else 'Current settings retained; no validated improvement without losing anomaly recall.')
@@ -67,3 +67,23 @@ def tune(rows,baseline):
 def training_filter(root):
  value=reservations(root);reserved_groups=set(value['groups']);reserved_pixels=set(value['pixels'])
  return lambda row:not (groups(row)&reserved_groups or row.get('pixel_sha256') in reserved_pixels)
+
+
+def benchmark_rows(root,version,revision):
+ """Reuse verified current-model scores; caller must exclude fitted groups/pixels.
+ This is held-out calibration evidence, not a frozen prospective test metric.
+ """
+ root=Path(root);status=json.loads((root/'status.json').read_text())
+ if status.get('state')!='complete' or status.get('versions',{}).get('hybrid')!=version or status.get('settings_revisions',{}).get('hybrid',0)!=revision:return []
+ run=Path(status['run'])
+ if not run.resolve().is_relative_to((root/'runs').resolve()):raise ValueError('Unsafe benchmark path')
+ samples={r['origin']:r for r in json.loads((run/'live-sample.json').read_text())['samples']}
+ result=[]
+ for path in sorted((run/'hybrid').glob('*.json')):
+  for prediction in json.loads(path.read_text())['predictions']:
+   row=samples.get(prediction['origin'])
+   if not row or not row.get('human_confirmed') or row['label']!=prediction['truth']:continue
+   score=prediction['score']
+   if not isinstance(score,(int,float)) or not math.isfinite(score) or not 0<=score<=1:raise ValueError('Invalid benchmark score')
+   result.append(dict(row,id=row['origin'],score=score,native_size=max(row['native_width'],row['native_height'])))
+ return result

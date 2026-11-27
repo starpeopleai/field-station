@@ -7,7 +7,7 @@ class ReviewPlaybackTests(unittest.TestCase):
   self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name);self.data=self.root/'lab';self.data.mkdir();self.key='a'*32
   self.ffmpeg=shutil.which('ffmpeg')
   if not self.ffmpeg:self.skipTest('ffmpeg unavailable')
-  self.env=patch.dict(os.environ,UAP_LAB_DATA=str(self.data),XDG_RUNTIME_DIR=str(self.root/'fast'),FFMPEG=self.ffmpeg);self.env.start();self.addCleanup(self.env.stop)
+  self.env=patch.dict(os.environ,UAP_LAB_DATA=str(self.data),XDG_RUNTIME_DIR=str(self.root/'review-playback'),FFMPEG=self.ffmpeg);self.env.start();self.addCleanup(self.env.stop)
   self.folder=self.root/'notifications/outbox'/self.key;self.folder.mkdir(parents=True);self.spool=self.root/'capture-spool/run-abc';self.spool.mkdir(parents=True)
   source=self.spool/'segment-000000001.mkv'
   subprocess.run([self.ffmpeg,'-v','error','-f','lavfi','-i','testsrc2=size=96x64:rate=30','-t','1','-c:v','libx264','-threads','1','-g','1','-bf','0',str(source)],check=True)
@@ -19,7 +19,7 @@ class ReviewPlaybackTests(unittest.TestCase):
   with patch('email_review.decoded_frames',side_effect=AssertionError('No full pixel decode during preparation')):result=email_review.prepare(self.data,self.key)
   self.assertTrue(result['source_frames_verified']);self.assertTrue(result['playback_frames_verified']);self.assertEqual(result['frames'],30)
   native=review_playback.native_path(self.data,self.key);preview=review_playback.playback_path(self.data,self.key)
-  self.assertNotEqual(native,preview);self.assertTrue(str(native).startswith(str(self.root/'fast')))
+  self.assertNotEqual(native,preview);self.assertTrue(str(native).startswith(str(self.root/'review-playback')))
   self.assertEqual([p['data_hash'] for p in email_review.decoded_frames(native)],[p['data_hash'] for p in email_review.decoded_frames(self.spool/'segment-000000001.mkv')])
   self.assertEqual(len(review_playback.frame_times(preview)),30)
   with patch('email_review.build_preview',side_effect=AssertionError('Warm clip must not rebuild')):self.assertEqual(email_review.prepare(self.data,self.key),result)

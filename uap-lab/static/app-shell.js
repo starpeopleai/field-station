@@ -1,19 +1,20 @@
 'use strict';
 (()=>{
- const titles={'/models':'Models','/test-model':'Test model','/metrics':'Metrics','/label-videos':'Review detections','/tracks':'Labeled objects','/labels':'Labeled objects','/events':'Recent events','/training':'Training history','/email-review':'Review detection'};
+ const titles={'/models':'Model tuning','/test-model':'Test model','/metrics':'Metrics','/label-videos':'Review detections','/tracks':'Labeled objects','/labels':'Labeled objects','/events':'Recent events','/training':'Training history','/email-review':'Review detection'};
  const root=location.pathname==='/';const old=document.querySelector('header.app-controls');
  const header=document.createElement('header');header.className='app-controls station-header';header.setAttribute('aria-label','Field Station');
  const button=document.getElementById('menuToggle')||document.createElement('button');button.id='menuToggle';button.className='station-menu-button';button.type='button';button.setAttribute('aria-label','Open navigation');button.setAttribute('aria-expanded','false');button.setAttribute('aria-controls','mainNav');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
  const brand=document.createElement('a');brand.className='station-brand';brand.href='/';brand.textContent='Field Station';
+ let favicon=document.querySelector('link[rel=icon]');if(!favicon){favicon=document.createElement('link');favicon.rel='icon';document.head.append(favicon);}favicon.href='/favicon.png?v=exception-1';
  const modelHash=document.createElement('small');modelHash.className='station-model-hash';modelHash.textContent='Checking model…';brand.append(modelHash);let confirmedModelHash='';
  function showModelStatus(hash,state){if(hash)confirmedModelHash=hash;modelHash.textContent=(confirmedModelHash?confirmedModelHash.slice(0,12):'Model')+(state==='live'?'':state==='error'?' · runtime error':' · status delayed');modelHash.title=state==='live'?confirmedModelHash:(confirmedModelHash?'Last confirmed model: '+confirmedModelHash+'. ':'')+(state==='error'?'Recognition reported an error.':'Waiting for a fresh runtime status.');}
  async function refreshModelHash(){if(document.hidden)return;try{const r=await fetch('/api/live/status',{cache:'no-store',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const data=await r.json();showModelStatus(data.active_model_hash||data.last_confirmed_model_hash,data.model_runtime_error?'error':data.active_model_hash?'live':'delayed');}catch{showModelStatus(null,'delayed');}}
  refreshModelHash();setInterval(refreshModelHash,10000);
  const title=document.createElement('span');title.className='station-page-title';title.textContent=titles[location.pathname]||({label:'Review detections',test:'Test model'}[new URLSearchParams(location.search).get('view')]||'Camera feed');
  const nav=document.getElementById('mainNav')||document.createElement('nav');nav.id='mainNav';nav.setAttribute('aria-label','Main navigation');nav.hidden=true;
- if(!root){for(const [name,url]of [['Camera feed','/'],['Review detections','/label-videos'],['Models','/models'],['Metrics','/metrics']]){const a=document.createElement('a');a.href=url;a.textContent=name;if(url===location.pathname||(url==='/tracks'&&location.pathname==='/labels'))a.setAttribute('aria-current','page');nav.append(a);}}
- if(root){const modelButton=document.getElementById('testTab');if(modelButton){modelButton.textContent='Models';modelButton.onclick=()=>{location.href='/models'};}for(const oldLink of nav.querySelectorAll('a[href="/metrics"],a[href="/training"]'))oldLink.remove();}
- if(root){for(const name of ['Camera feed','Review detections','Models']){const el=[...nav.children].find(e=>e.textContent===name);if(el)nav.append(el);}}
+ if(!root){for(const [name,url]of [['Camera feed','/'],['Review detections','/label-videos'],['Model tuning','/models'],['Metrics','/metrics']]){const a=document.createElement('a');a.href=url;a.textContent=name;if(url===location.pathname||(url==='/tracks'&&location.pathname==='/labels'))a.setAttribute('aria-current','page');nav.append(a);}}
+ if(root){const modelButton=document.getElementById('testTab');if(modelButton){modelButton.textContent='Model tuning';modelButton.onclick=()=>{location.href='/models'};}for(const oldLink of nav.querySelectorAll('a[href="/metrics"],a[href="/training"]'))oldLink.remove();}
+ if(root){for(const name of ['Camera feed','Review detections','Model tuning']){const el=[...nav.children].find(e=>e.textContent===name);if(el)nav.append(el);}}
  if(root){const metrics=document.createElement('a');metrics.href='/metrics';metrics.textContent='Metrics';nav.append(metrics);}
  header.append(button,brand,title,nav);
  for(const id of ['infoToggle','infoPanel']){const el=document.getElementById(id);if(el)header.append(el);}
@@ -37,33 +38,27 @@
  for(const id of ['notice','queueToast']){const node=document.getElementById(id);if(node)mount(node);}
  const prior=document.getElementById('notice');if(prior?.textContent.startsWith('Connection')){set('stationConnectionNotice','Connection is slow. Waiting for the station…',true);prior.textContent='';}
 })();
-// Keep the current document and unsaved controls intact across service restarts.
+// Preserve the review document, playback and drafts during service recovery.
 (()=>{
- let instance=null,interrupted=false,failures=0,dialog=null,focus=null;
- function show(title,message){
-  if(!dialog){dialog=document.createElement('dialog');dialog.id='stationMaintenance';dialog.setAttribute('aria-labelledby','stationMaintenanceTitle');dialog.innerHTML="<div class=\"station-test-card\"><div class=\"test-grid\" aria-hidden=\"true\"></div>\n<div class=\"test-bars test-bars-top\" aria-hidden=\"true\"></div><div class=\"test-bars test-bars-bottom\" aria-hidden=\"true\"></div>\n<div class=\"test-ring\" aria-hidden=\"true\"><span class=\"test-cross test-cross-h\"></span><span class=\"test-cross test-cross-v\"></span></div>\n<div class=\"test-message\"><div class=\"test-portrait\" aria-hidden=\"true\"><img class=\"test-emblem\" fetchpriority=\"high\" src=\"/ufo-engraving.png?v=original-restored-10\" alt=\"\"></div><strong id=\"stationMaintenanceTitle\" role=\"heading\" aria-level=\"1\">WE'LL BE RIGHT BACK</strong><span class=\"test-standby maintenance-description\" id=\"stationMaintenanceMessage\">Checking station status\u2026</span></div>\n<svg class=\"test-grain\" aria-hidden=\"true\" focusable=\"false\" xmlns=\"http://www.w3.org/2000/svg\"><defs><filter id=\"maintenance-grain\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".8\" numOctaves=\"1\" stitchTiles=\"stitch\"/><feColorMatrix type=\"saturate\" values=\"0\"/><feComponentTransfer><feFuncA type=\"linear\" slope=\"0\" intercept=\"1\"/></feComponentTransfer></filter></defs><rect width=\"100%\" height=\"100%\" filter=\"url(#maintenance-grain)\"/></svg></div>";dialog.addEventListener('cancel',e=>e.preventDefault());document.body.append(dialog);}
-  dialog.querySelector('#stationMaintenanceTitle').textContent=title==='Cleanup in progress'?'CLEANUP IN PROGRESS':"WE'LL BE RIGHT BACK";dialog.querySelector('#stationMaintenanceMessage').textContent=message;
-  if(!dialog.open){focus=document.activeElement;dialog.showModal();}
- }
- function connectionWarning(visible){
-  if(visible)window.stationNotifications.set('stationConnectionNotice','Connection is slow. Waiting for the station…',true);
-  else window.stationNotifications.clear('stationConnectionNotice');
- }
-
+ let instance=null,interrupted=false,failures=0;
+ function warning(message){window.stationNotifications.set('stationConnectionNotice',message,true);}
  async function poll(){
   try{
    const response=await fetch('/api/service-status',{cache:'no-store',priority:'high',signal:AbortSignal.timeout(window.FIELD_PUBLIC_READ_ONLY===true?45000:8000)});
-   if(!response.ok)throw Error('Unavailable');const state=await response.json();failures=0;connectionWarning(false);
-   if(!state.available){interrupted=true;show(state.title,state.message);}
-   else{
+   if(!response.ok)throw Error('Unavailable');const state=await response.json();
+   if(!state.available){
+    interrupted=true;
+    if(++failures>=2||state.phase==='cleanup')warning(state.phase==='cleanup'?'Backlog cleanup is in progress. Waiting for the station…':'Reconnecting to the station…');
+   }else{
     if(interrupted||(instance&&instance!==state.instance)){
+     // Retry authorization without replacing the page or losing unsaved work.
      const r=await fetch('/api/labeled-frames/token',{cache:'no-store',priority:'high',signal:AbortSignal.timeout(window.FIELD_PUBLIC_READ_ONLY===true?45000:8000)});if(!r.ok)throw Error('Not ready');const auth=await r.json();
      window.dispatchEvent(new CustomEvent('station-reconnected',{detail:{token:auth.token}}));
-     if(dialog?.open){dialog.close();focus?.focus();}interrupted=false;
+     interrupted=false;
     }
-    instance=state.instance;
+    instance=state.instance;failures=0;window.stationNotifications.clear('stationConnectionNotice');
    }
-  }catch{if(++failures>=2)connectionWarning(true);}
+  }catch{interrupted=true;if(++failures>=2)warning('Reconnecting to the station…');}
   setTimeout(poll,2500);
  }
  poll();
@@ -71,22 +66,22 @@
 
 // Manual requests share the scheduled trainer and its model validation gates.
 (()=>{
- if(!['/label-videos','/models'].includes(location.pathname)||window.FIELD_PUBLIC_READ_ONLY===true)return;
+ if(!['/label-videos','/models','/metrics'].includes(location.pathname)||window.FIELD_PUBLIC_READ_ONLY===true)return;
  const button=document.createElement('button');button.type='button';button.id='trainNow';button.className='station-train-button';button.textContent='Train now';button.disabled=true;
  document.querySelector('.station-header').append(button);
  const notice=document.createElement('div');notice.className='station-training-notice';notice.setAttribute('role','status');notice.hidden=true;window.stationNotifications.mount(notice);
  let submitting=false,watching=false;
  const labels={cascade_training:'Training cycle…',cascade_evaluating:'Comparing…',queued:'Queued…',starting:'Starting…',snapshot:'Preparing…',building:'Preparing…',training:'Training…',refining_class_corrections:'Refining…',evaluating:'Validating…',activation_pending:'Retrying deployment…',activating:'Deploying…'};
- const messages={waiting_for_data:'Training could not start because independent training or validation data is missing.',not_promoted:'Training finished. The earlier model was kept because this run did not meet its release checks. Your labels are saved.',validated_no_improvement:'Training finished without a validated improvement. Your labels are saved and the current model remains active.',refining_class_corrections:'Checking class corrections.',queued:'Training queued. The trainer checks for requests every minute.',starting:'Training is starting.',snapshot:'Collecting human-reviewed labels.',building:'Preparing the training dataset.',training:'Training a model with your labels.',evaluating:'Checking the new model before release.',activation_pending:'Model trained. Activation needs attention and will retry automatically.',activating:'Deploying the validated model.',deployed:'The new model is live.',validated_unchanged:'Training validated. The active model already uses these labels.',rejected:'The new model did not pass validation. The current model remains active.',superseded:'Labels changed during training. A fresh run is needed.',error:'Training could not finish. See Models for details.',rolled_back:'The new model was rolled back. The previous model remains active.'};
- function render(state){button.disabled=submitting||state.busy;button.textContent=state.busy?(labels[state.phase]||'Training…'):'Train now';if(watching||(state.busy&&state.phase.startsWith("cascade"))){notice.hidden=false;notice.textContent=(['building','cascade_training','cascade_evaluating','cascade_complete','cascade_partial'].includes(state.phase)&&state.reason?state.reason:messages[state.phase])||(state.busy?'Training is running.':'Training finished. See Models for details.');}}
+ const messages={waiting_for_data:'Training could not start because independent training or validation data is missing.',not_promoted:'Training finished. The earlier model was kept because this run did not meet its release checks. Your labels are saved.',validated_no_improvement:'Training finished without a validated improvement. Your labels are saved and the current model remains active.',refining_class_corrections:'Checking class corrections.',queued:'Training queued. The trainer checks for requests every minute.',starting:'Training is starting.',snapshot:'Collecting human-reviewed labels.',building:'Preparing the training dataset.',training:'Training a model with your labels.',evaluating:'Checking the new model before release.',activation_pending:'Model trained. Activation needs attention and will retry automatically.',activating:'Deploying the validated model.',deployed:'The new model is live.',validated_unchanged:'Training validated. The active model already uses these labels.',rejected:'The new model did not pass validation. The current model remains active.',superseded:'Labels changed during training. A fresh run is needed.',error:'Training could not finish. See Model tuning for details.',rolled_back:'The new model was rolled back. The previous model remains active.'};
+ function render(state){button.disabled=submitting||state.busy;button.textContent=state.busy?(labels[state.phase]||'Training…'):'Train now';if(watching||(state.busy&&state.phase.startsWith("cascade"))){notice.hidden=false;notice.textContent=(['building','cascade_training','cascade_evaluating','cascade_complete','cascade_partial'].includes(state.phase)&&state.reason?state.reason:messages[state.phase])||(state.busy?'Training is running.':'Training finished. See Model tuning for details.');}}
  async function poll(){try{const r=await fetch('/api/training-control',{cache:'no-store'});if(!r.ok)throw Error();render(await r.json());}catch{button.disabled=true;button.textContent='Train now';button.title='Waiting for the training service';}}
  button.onclick=async()=>{if(button.disabled)return;submitting=true;button.disabled=true;button.textContent='Queuing…';watching=true;try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store'});if(!auth.ok)throw Error();const {token}=await auth.json();const r=await fetch('/api/training-control/start',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify({ranking_measure:(()=>{try{return localStorage.getItem('model-ranking-measure')||'false_positive_rate'}catch{return 'false_positive_rate'}})()})});if(!r.ok)throw Error();submitting=false;render(await r.json());}catch{submitting=false;notice.hidden=false;notice.textContent='Could not confirm the training request. Checking its status…';await poll();}};
  window.addEventListener('station-reconnected',poll);poll();setInterval(poll,5000);
 })();
 
-// Clear analysis and review backlogs from Review detections only.
+// Shared operator actions on review, model tuning and metrics pages.
 (()=>{
- if(location.pathname!=='/label-videos'||window.FIELD_PUBLIC_READ_ONLY===true)return;
+ if(!['/label-videos','/models','/metrics'].includes(location.pathname)||window.FIELD_PUBLIC_READ_ONLY===true)return;
  const button=document.createElement('button');button.id='clearBacklog';button.type='button';button.className='station-train-button';button.textContent='Clear backlog';button.title='Skip queued analysis to live and delete unreviewed detections and their media. Human-reviewed evidence is preserved.';
  document.querySelector('.station-header').append(button);
  const style=document.createElement('style');style.textContent='.station-header #clearBacklog{margin-left:0;white-space:nowrap}.station-header:has(#clearBacklog) #trainNow{margin-left:auto}@media(max-width:600px){.station-header:has(#clearBacklog) .station-page-title{display:none}.station-header:has(#trainNow):has(#clearBacklog) .station-brand{display:none}}';document.head.append(style);
@@ -102,9 +97,9 @@
  window.addEventListener('station-reconnected',poll);poll();setInterval(poll,3000);
 })();
 
-// Operator capture control is available only on the private review screen.
+// Capture controls stay private across the operator workspaces.
 (()=>{
- if(location.pathname!=='/label-videos'||window.FIELD_PUBLIC_READ_ONLY===true)return;
+ if(!['/label-videos','/models','/metrics'].includes(location.pathname)||window.FIELD_PUBLIC_READ_ONLY===true)return;
  const header=document.querySelector('.station-header');if(!header)return;
  const button=document.createElement('button');button.id='pauseCapture';button.type='button';button.className='station-train-button';button.style.marginLeft='0';button.style.whiteSpace='nowrap';button.textContent='Pause capture';button.disabled=true;
  header.insertBefore(button,document.getElementById('clearBacklog'));
@@ -194,14 +189,98 @@
  const nav=document.getElementById('mainNav');if(!nav)return;
  const open=document.createElement('button');open.type='button';open.id='stationSettingsOpen';open.textContent='Settings';nav.append(open);
  const dialog=document.createElement('dialog');dialog.id='stationSettings';dialog.setAttribute('aria-labelledby','stationSettingsTitle');
- dialog.innerHTML='<form method="dialog" class="settings-heading"><h2 id="stationSettingsTitle">Settings</h2><button aria-label="Close settings" value="close">×</button></form><label class="settings-option" for="daytimeAutoCleanup"><span>Daytime auto-cleanup</span><input id="daytimeAutoCleanup" type="checkbox" role="switch" disabled></label><label class="settings-option settings-delay" for="daytimeCleanupDelay"><span>Delete after</span><select id="daytimeCleanupDelay" disabled><option value="10800">3 hours</option><option value="21600">6 hours</option><option value="43200">12 hours</option><option value="86400">24 hours</option></select></label><p id="daytimeCleanupHelp">Delete machine-only, non-anomalous daytime detections after the selected time from capture. Runs during daylight; nighttime detections, human-reviewed training data, starred evidence, and manual recordings are kept.</p><p id="stationLocation">Automatic location: unknown</p><p id="stationSettingsStatus" role="status"></p>';
- document.body.append(dialog);const toggle=dialog.querySelector('input'),delay=dialog.querySelector('select'),status=dialog.querySelector('[role=status]');toggle.setAttribute('aria-describedby','daytimeCleanupHelp');delay.setAttribute('aria-describedby','daytimeCleanupHelp');let confirmed={daytime_auto_cleanup:false,after_seconds:10800},busy=false;
- function render(state){const place=state.observation_location;dialog.querySelector('#stationLocation').textContent=place?.status==='known'?'Location: '+[place.county,place.state,place.country].join(', ')+' · automatic, county only':'Automatic location: unknown';confirmed=state;toggle.checked=state.daytime_auto_cleanup===true;delay.value=String(state.after_seconds);toggle.disabled=busy;delay.disabled=busy||!toggle.checked;}
- async function load(){toggle.disabled=true;delay.disabled=true;status.textContent='Loading…';try{const r=await fetch('/api/settings',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error();const state=await r.json();render(state);status.textContent='';}catch{status.textContent='Settings unavailable. Close and reopen to retry.';}}
+ dialog.innerHTML='<form method="dialog" class="settings-heading"><h2 id="stationSettingsTitle">Settings</h2><button aria-label="Close settings" value="close">×</button></form><label class="settings-option" for="negativeBacklogLimit"><span>Limit non-anomalous frames</span><input id="negativeBacklogLimit" type="checkbox" role="switch" aria-describedby="negativeBacklogHelp" disabled></label><label id="negativeBacklogCountRow" class="settings-option settings-delay" for="negativeBacklogCount" hidden><span>Frame limit</span><select id="negativeBacklogCount" disabled><option value="250">250</option><option value="500">500</option><option value="1000" selected>1,000</option><option value="2500">2,500</option><option value="5000">5,000</option></select></label><p id="negativeBacklogHelp">Automatically remove excess machine-only, non-anomalous detections, day or night. Human-reviewed frames, starred evidence, and manual recordings are kept. New and actively reviewed frames may temporarily exceed the limit.</p><label class="settings-option" for="daytimeAutoCleanup"><span>Daytime auto-cleanup</span><input id="daytimeAutoCleanup" type="checkbox" role="switch" disabled></label><label class="settings-option settings-delay" for="daytimeCleanupDelay"><span>Delete after</span><select id="daytimeCleanupDelay" disabled><option value="10800">3 hours</option><option value="21600">6 hours</option><option value="43200">12 hours</option><option value="86400">24 hours</option></select></label><p id="daytimeCleanupHelp">Delete machine-only, non-anomalous daytime detections after the selected time from capture. Runs during daylight; nighttime detections, human-reviewed training data, starred evidence, and manual recordings are kept.</p><p id="stationLocation">Automatic location: unknown</p><p id="stationSettingsStatus" role="status"></p>';
+ document.body.append(dialog);const cap=dialog.querySelector('#negativeBacklogLimit'),capCount=dialog.querySelector('#negativeBacklogCount'),toggle=dialog.querySelector('#daytimeAutoCleanup'),delay=dialog.querySelector('#daytimeCleanupDelay'),status=dialog.querySelector('[role=status]');toggle.setAttribute('aria-describedby','daytimeCleanupHelp');delay.setAttribute('aria-describedby','daytimeCleanupHelp');let confirmed={negative_backlog_enabled:false,negative_backlog_limit:1000,daytime_auto_cleanup:false,after_seconds:10800},busy=false;
+ const chromeLabel=document.createElement('label');
+ chromeLabel.className='settings-option';
+ chromeLabel.innerHTML='<span>Hide camera feed controls</span><input type="checkbox" role="switch" aria-describedby="cameraChromeHelp">';
+ const chromeHelp=document.createElement('p');chromeHelp.id='cameraChromeHelp';
+ chromeHelp.textContent='On this browser, tap the feed or press Escape to show the controls again.';
+ dialog.querySelector('.settings-option').before(chromeLabel,chromeHelp);
+ const chromeToggle=chromeLabel.querySelector('input'),chromeKey='field-station.hide-camera-chrome';
+ function syncChrome(hidden){
+  chromeToggle.checked=hidden;
+  document.body.classList.toggle('hide-camera-chrome',hidden);
+ }
+ function readChrome(){try{return localStorage.getItem(chromeKey)==='1';}catch{return false;}}
+ function setChrome(hidden){
+  try{localStorage.setItem(chromeKey,hidden?'1':'0');}catch{}
+  syncChrome(hidden);
+ }
+ syncChrome(readChrome());
+ chromeToggle.onchange=()=>setChrome(chromeToggle.checked);
+ window.addEventListener('storage',e=>{if(e.key===chromeKey||e.key===null)syncChrome(readChrome());});
+ const camera=document.getElementById('liveViewer');
+ if(camera){
+  const canRestore=()=>chromeToggle.checked&&document.body.classList.contains('live-mode')&&!document.querySelector('dialog[open]');
+  camera.addEventListener('click',e=>{if(canRestore()){e.preventDefault();e.stopImmediatePropagation();setChrome(false);}},{capture:true});
+  window.addEventListener('keydown',e=>{if(e.key==='Escape'&&!e.repeat&&canRestore()){e.preventDefault();setChrome(false);}});
+ }
+ const zoneLabel=document.createElement('label');
+ zoneLabel.className='settings-option';
+ zoneLabel.innerHTML='<span>Detection zone</span><input type="checkbox" role="switch" disabled>';
+ const zoneSwitch=zoneLabel.querySelector('input');
+ const zoneEditor=document.createElement('div');
+ zoneEditor.hidden=true;
+ zoneEditor.innerHTML='<p>Drag a rectangle around the area to monitor. Detections use the center of each object.</p><canvas width="640" height="360" tabindex="0" aria-label="Detection zone. Drag to draw, use arrow keys to move, or Shift and arrows to resize."></canvas><button type="button">Save zone</button><span role="status" aria-live="polite"></span>';
+ const zoneCanvas=zoneEditor.querySelector('canvas'),zoneSave=zoneEditor.querySelector('button'),zoneStatus=zoneEditor.querySelector('span');
+ Object.assign(zoneCanvas.style,{display:'block',width:'100%',height:'auto',touchAction:'none',cursor:'crosshair',marginBottom:'.5rem'});
+ const zoneAnchor=dialog.querySelector('.settings-option');
+ zoneAnchor.before(zoneLabel,zoneEditor);
+ let zoneSaved=[0,0,1,1],zoneDraft=zoneSaved.slice(),zoneOn=false,zoneBusy=false,zoneStart=null,zonePhoto=null,zoneLoadId=0;
+ function paintZone(){
+  const ctx=zoneCanvas.getContext('2d'),w=zoneCanvas.width,h=zoneCanvas.height;
+  ctx.fillStyle='#242424';ctx.fillRect(0,0,w,h);
+  if(zonePhoto)ctx.drawImage(zonePhoto,0,0,w,h);
+  const [l,t,r,b]=zoneDraft;
+  ctx.beginPath();ctx.rect(0,0,w,h);ctx.rect(l*w,t*h,(r-l)*w,(b-t)*h);
+  ctx.fillStyle='rgba(0,0,0,.55)';ctx.fill('evenodd');
+  ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,w/320);
+  ctx.strokeRect(l*w,t*h,(r-l)*w,(b-t)*h);
+  zoneSave.disabled=zoneBusy||!zoneOn||zoneSaved.every((v,i)=>v===zoneDraft[i]);
+ }
+ function loadZonePhoto(){
+  const seq=++zoneLoadId,img=new Image();
+  zonePhoto=null;paintZone();
+  img.onload=()=>{if(seq!==zoneLoadId)return;zonePhoto=img;zoneCanvas.width=Math.min(960,img.naturalWidth);zoneCanvas.height=Math.round(zoneCanvas.width*img.naturalHeight/img.naturalWidth);paintZone();};
+  img.onerror=()=>{if(seq===zoneLoadId)zoneStatus.textContent='Camera preview unavailable.';};
+  img.src='/api/live/frame?t='+Date.now();
+ }
+ function renderZone(s){
+  zoneOn=s.zone_enabled===true;zoneSaved=(s.zone_bounds||[0,0,1,1]).slice();zoneDraft=zoneSaved.slice();
+  zoneSwitch.checked=zoneOn;zoneSwitch.disabled=zoneBusy;zoneEditor.hidden=!zoneOn;paintZone();
+ }
+ function point(e){const b=zoneCanvas.getBoundingClientRect();return [Math.min(1,Math.max(0,(e.clientX-b.left)/b.width)),Math.min(1,Math.max(0,(e.clientY-b.top)/b.height))];}
+ zoneCanvas.onpointerdown=e=>{if(zoneBusy||!e.isPrimary||e.button!==0)return;zoneStart=point(e);zoneCanvas.setPointerCapture(e.pointerId);};
+ zoneCanvas.onpointermove=e=>{if(!zoneStart||!e.isPrimary)return;const [x,y]=point(e),[a,b]=zoneStart;zoneDraft=[Math.min(x,a),Math.min(y,b),Math.max(x,a),Math.max(y,b)];paintZone();};
+ zoneCanvas.onpointerup=e=>{if(!zoneStart||!e.isPrimary)return;zoneCanvas.onpointermove(e);zoneStart=null;if(zoneDraft[2]<=zoneDraft[0]||zoneDraft[3]<=zoneDraft[1])zoneDraft=zoneSaved.slice();paintZone();};
+ zoneCanvas.onpointercancel=()=>{zoneStart=null;zoneDraft=zoneSaved.slice();paintZone();};
+ zoneCanvas.onkeydown=e=>{
+  const axis={ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[1,-1],ArrowDown:[1,1]}[e.key];
+  if(!axis||zoneBusy)return;e.preventDefault();
+  const [i,sign]=axis,d=zoneDraft.slice(),step=sign*.01;
+  if(e.shiftKey)d[i+2]=Math.min(1,Math.max(d[i]+.01,d[i+2]+step));
+  else{const move=Math.max(-d[i],Math.min(1-d[i+2],step));d[i]+=move;d[i+2]+=move;}
+  zoneDraft=d;paintZone();
+ };
+ async function commitZone(patch){
+  if(zoneBusy)return;zoneBusy=true;zoneSwitch.disabled=true;zoneSave.disabled=true;zoneStatus.textContent='Saving…';
+  try{
+   const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+   if(!auth.ok)throw Error();const {token}=await auth.json();
+   const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(patch),signal:AbortSignal.timeout(10000)});
+   if(!response.ok)throw Error();const state=await response.json();Object.assign(confirmed,{zone_enabled:state.zone_enabled,zone_bounds:state.zone_bounds});renderZone(state);zoneStatus.textContent='Saved';if(state.zone_enabled&&patch.zone_enabled)loadZonePhoto();
+  }catch{zoneSwitch.checked=zoneOn;status.textContent='Detection zone could not be saved.';zoneStatus.textContent='Save failed. Try again.';}
+  finally{zoneBusy=false;zoneSwitch.disabled=false;paintZone();}
+ }
+ zoneSwitch.onchange=()=>commitZone({zone_enabled:zoneSwitch.checked});
+ zoneSave.onclick=()=>commitZone({zone_bounds:zoneDraft});
+ function render(state){renderZone(state);const place=state.observation_location;dialog.querySelector('#stationLocation').textContent=place?.status==='known'?'Location: '+[place.county,place.state,place.country].join(', ')+' · automatic, county only':'Automatic location: unknown';confirmed=state;cap.checked=state.negative_backlog_enabled===true;cap.disabled=busy;capCount.value=String(state.negative_backlog_limit??1000);capCount.disabled=busy||!cap.checked;dialog.querySelector('#negativeBacklogCountRow').hidden=!cap.checked;toggle.checked=state.daytime_auto_cleanup===true;delay.value=String(state.after_seconds);toggle.disabled=busy;delay.disabled=busy||!toggle.checked;}
+ async function load(){zoneSwitch.disabled=true;cap.disabled=true;capCount.disabled=true;toggle.disabled=true;delay.disabled=true;status.textContent='Loading…';try{const r=await fetch('/api/settings',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error();const state=await r.json();render(state);zoneStatus.textContent='';if(state.zone_enabled)loadZonePhoto();status.textContent='';}catch{status.textContent='Settings unavailable. Close and reopen to retry.';}}
  open.onclick=()=>{nav.hidden=true;document.getElementById('menuToggle').setAttribute('aria-expanded','false');dialog.showModal();void load();};
  dialog.addEventListener('close',()=>document.getElementById('menuToggle').focus());
- const saveSettings=async()=>{if(busy)return;const requested={daytime_auto_cleanup:toggle.checked,after_seconds:Number(delay.value)};busy=true;toggle.disabled=true;delay.disabled=true;status.textContent='Saving…';try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!auth.ok)throw Error();const {token}=await auth.json();const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(requested),signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();const state=await response.json();render(state);status.textContent='Saved';}catch{render(confirmed);status.textContent='Save could not be confirmed. Reopen settings to check.';}finally{busy=false;render(confirmed);}};
- toggle.onchange=saveSettings;delay.onchange=saveSettings;
+ const saveSettings=async()=>{if(busy)return;const requested={negative_backlog_enabled:cap.checked,negative_backlog_limit:Number(capCount.value),daytime_auto_cleanup:toggle.checked,after_seconds:Number(delay.value)};busy=true;cap.disabled=true;capCount.disabled=true;toggle.disabled=true;delay.disabled=true;status.textContent='Saving…';try{const auth=await fetch('/api/labeled-frames/token',{cache:'no-store',signal:AbortSignal.timeout(10000)});if(!auth.ok)throw Error();const {token}=await auth.json();const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lab-Token':token},body:JSON.stringify(requested),signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();const state=await response.json();render(state);status.textContent='Saved';}catch{render(confirmed);status.textContent='Save could not be confirmed. Reopen settings to check.';}finally{busy=false;render(confirmed);}};
+ cap.onchange=()=>{dialog.querySelector('#negativeBacklogCountRow').hidden=!cap.checked;void saveSettings();};capCount.onchange=saveSettings;toggle.onchange=saveSettings;delay.onchange=saveSettings;
 })();
 
 // The station's coarse location, never the reviewing device's location.
@@ -223,4 +302,55 @@
  }
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh();});
  void refresh();
+})();
+
+// Aircraft radar and private center settings.
+if(window.FIELD_PUBLIC_READ_ONLY!==true){const script=document.createElement("script");script.src="/air-traffic.js?v=1";document.head.append(script);}
+
+// Keep the original label in the accessibility tree and preserve the button's width.
+(() => {
+ const running = new WeakSet(), indications = new WeakMap();
+ document.addEventListener('click', event => {
+  const button = event.target.closest?.('button');
+  if (!button || button.disabled) return;
+  if (running.has(button)) {
+   event.preventDefault();
+   event.stopImmediatePropagation();
+   return;
+  }
+  const handler = button.onclick;
+  const earlier = indications.get(button);
+  const indication = {previousBusy: earlier ? earlier.previousBusy : button.getAttribute('aria-busy')};
+  indications.set(button,indication);
+  if(getComputedStyle(button).position==='static')button.classList.add('station-action-relative');
+  button.classList.add('station-action-pending');
+  button.setAttribute('aria-busy','true');
+  const minimum = new Promise(resolve => setTimeout(resolve,200));
+  let work;
+  if (handler) {
+   const invoke = function(e) {
+    button.onclick = handler;
+    const result = handler.call(this,e);
+    if (result && typeof result.then === 'function') {
+     running.add(button);
+     work = Promise.resolve(result);
+    }
+    return result;
+   };
+   button.onclick = invoke;
+   setTimeout(() => { if (button.onclick === invoke) button.onclick = handler; },0);
+  }
+  // DOM event dispatch completes before a timer, including keyboard activation.
+  setTimeout(async () => {
+   try { await Promise.allSettled([minimum,work]); }
+   finally {
+    if(indications.get(button)!==indication)return;
+    indications.delete(button);running.delete(button);
+    const {previousBusy}=indication;
+    button.classList.remove('station-action-pending','station-action-relative');
+    if(previousBusy===null)button.removeAttribute('aria-busy');
+    else button.setAttribute('aria-busy',previousBusy);
+   }
+  },0);
+ },true);
 })();

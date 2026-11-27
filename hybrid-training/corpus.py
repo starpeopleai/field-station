@@ -23,32 +23,17 @@ def preserve(root,rows,frames):
  save(path,existing)
  return existing
 
-def machine_dataset(root,code):
- import sys
- sys.path.insert(0,str(code/'uap-lab/recognition'))
- from candidate_dataset import group_rows
- from collections import Counter
- manifest=root/'corpus/manifest.json';source=json.loads(manifest.read_text()) if manifest.exists() else {};rows=[]
- from decision_tuning import training_filter
- allowed=training_filter(root)
- for key,row in source.items():
-  if not allowed(row):continue
-  if row.get('human_confirmed') or row.get('label_source')!='machine':raise ValueError('Machine-only dataset contains human labels')
-  rows.append(dict(origin='machine:'+key,label=row['label'],group=row['generation'],pixel_sha256=row['pixel_sha256'],native_width=row['native_width'],native_height=row['native_height'],source=str(root/'corpus'/row['image']),human_confirmed=False,label_source='machine',teacher_version=row.get('teacher_version'),captured_epoch=row.get('captured_epoch'),generation=row.get('generation'),input_color_space='RGB'))
- sys.path.insert(0,str(code/'uap-lab/auto_training'))
- from prospective import partition
- rows,research_admission=partition(root,rows)
- rows,quarantine=group_rows(rows);blockers=[]
- for row in rows:row['split']='train'
- coverage={label:dict(train=len({row['group'] for row in rows if row['label']==label})) for label in {row['label'] for row in rows}}
- if set(r['label'] for r in rows)!={'anomalous','not_anomalous'}:blockers.append('Both machine-labeled classes are required')
- key=hashlib.sha256(json.dumps(dict(samples=rows,training_mode='machine_fixed_threshold_v1'),sort_keys=True).encode()).hexdigest();folder=root/'runs'/key
- if not (folder/'dataset.json').exists():
-  (folder/'images').mkdir(parents=True,exist_ok=True);samples=[]
-  for i,row in enumerate(rows):
-   image='images/'+str(i)+'.png';target=folder/image
-   if not target.exists():os.link(row['source'],target)
-   samples.append(dict({k:v for k,v in row.items() if k!='source'},image=image))
-  save(folder/'dataset.json',dict(research_admission=research_admission,fingerprint=key,classes=['anomalous','not_anomalous'],samples=samples,counts=dict(Counter(r['label'] for r in samples)),blockers=blockers,quarantine=quarantine,independent_groups=coverage,human_training_counts={},pseudo_labels=len(samples),training_strategy='recording_balanced',training_lane='machine_only',shadow_only=True,evaluation_mode='shared_human_benchmark',fixed_anomaly_threshold=0.8,limitations=['Machine labels train the model; no machine-labeled calibration or test scores are reported. Evaluation uses the shared random 500 human-reviewed images.']))
- save(root/'dataset-current.json',dict(directory=str(folder),fingerprint=key,examples=len(rows),blockers=blockers,training_lane='machine_only'))
- return folder,blockers
+def machine_dataset(root,code,human_source):
+ """Use the same reviewed foundation for scheduled and manual training."""
+ from cascade_training import build_snapshot
+ base=json.loads((Path(human_source)/'dataset.json').read_text())
+ manifest=root/'corpus/manifest.json'
+ source=json.loads(manifest.read_text()) if manifest.exists() else {}
+ identity=hashlib.sha256(json.dumps([base['fingerprint'],source],sort_keys=True).encode()).hexdigest()
+ frozen=root/'inputs'/(identity+'.json')
+ if not frozen.exists():save(frozen,source)
+ cfg=dict(code=str(code),lanes={'machine':{'root':str(root)}})
+ cycle=dict(id=identity,stable_source=str(human_source),inputs={'machine':str(frozen)})
+ folder=build_snapshot(cfg,cycle,'machine');data=json.loads((folder/'dataset.json').read_text())
+ save(root/'dataset-current.json',dict(directory=str(folder),fingerprint=data['fingerprint'],examples=len(data['samples']),blockers=data['blockers'],training_lane='machine_only',human_training_counts=data['human_training_counts']))
+ return folder,data['blockers']

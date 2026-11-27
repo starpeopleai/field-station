@@ -178,3 +178,10 @@ def snapshot(data):
      with _LOCK:_BUSY.discard(key)
    threading.Thread(target=work,daemon=True).start()
   return dict(cached,indexing=key in _BUSY,error=_ERROR.get(key),ready=bool(cached))
+
+
+def response(data):
+ """Assemble all metrics sections; historical FP never uses post-review inference."""
+ from review_model_metrics import snapshot as reviewed_snapshot
+ from model_activation import status as activation_status
+ return dict(snapshot(data),reviewed_models=reviewed_snapshot(data),model_activation=activation_status(data),model_comparison=read(Path(data)/'model-comparison.json',dict(points=[])))

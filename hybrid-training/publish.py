@@ -11,6 +11,7 @@ def publish(root,folder,repository='starpeopleai/anomaly-vision-model'):
   with tempfile.TemporaryDirectory(dir=artifact) as temporary:
    payload=Path(temporary);shutil.copytree(folder/'candidate.mlpackage',payload/'candidate.mlpackage');shutil.copyfile(folder/'candidate-weights.pt',payload/'candidate-weights.pt')
    keys=('version','classes','thresholds','minimum_native_size','input_color_space','decision_rule','preprocessing','night_context_confirmation')
+   if lane=='human_experimental':keys+=('classification_input_scope','training_recipe','architecture')
    save(payload/'candidate-policy.json',{k:policy[k] for k in keys if k in policy})
    dataset=json.loads((folder/'dataset.json').read_text());save(payload/'model-card.json',dict(version=version,role=lane+'-shadow-only',live=False,human_training_counts=dataset.get('human_training_counts',{}),pseudo_labels=dataset.get('pseudo_labels',0),human_baseline_version=dataset.get('human_baseline_version'),qualification='Experimental; prospective human-reviewed comparison required before live use. Training images are not included.'))
    with tarfile.open(artifact/'model.tar.gz','w:gz') as tar:
@@ -18,7 +19,7 @@ def publish(root,folder,repository='starpeopleai/anomaly-vision-model'):
   (artifact/'SHA256SUMS').write_text(sha(artifact/'model.tar.gz')+'  model.tar.gz\n')
  tag=lane+'-'+version;github=GitHub(repository);release=github.find(tag)
  if release is None:
-  notes=artifact/'notes.md';notes.write_text('Experimental '+lane+' model. '+('Training examples are exclusively machine-labeled; the initial teacher was human-curated. ' if lane=='machine_only' else 'Trained exclusively on human-reviewed frames for experiments. ' if lane=='human_experimental' else 'Trained on human-reviewed frames plus conservative machine labels. ')+'Shadow use only; does not replace the live human-curated model. No training images are included.\n')
+  notes=artifact/'notes.md';notes.write_text('Experimental '+lane+' model. '+(('Grounded in human-reviewed examples, supplemented by independently admitted machine labels. ' if dataset.get('human_grounded') else 'Training examples are exclusively machine-labeled; the initial teacher was human-curated. ') if lane=='machine_only' else 'Trained exclusively on human-reviewed frames for experiments. ' if lane=='human_experimental' else 'Trained on human-reviewed frames plus conservative machine labels. ')+'Shadow use only; does not replace the live human-curated model. No training images are included.\n')
   github.run(['release','create',tag,'--repo',repository,'--draft','--prerelease','--latest=false','--title',lane.replace('_',' ').title()+' shadow model '+version[:12],'--notes-file',str(notes)]);release=github.find(tag)
   if release is None:raise ValueError('Shadow draft not visible yet; retrying')
  names={r['name'] for r in release.get('assets',[])}

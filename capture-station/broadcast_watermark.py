@@ -1,23 +1,14 @@
 """Composite the stacked StarPeople.ai Network watermark."""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from broadcast_rf import FONT
 
 class Watermark:
     def __init__(self):
         from broadcast_location import LocationOverlay
         self.location=LocationOverlay()
-        path=Path(__file__).with_name('assets')/'field-station-mark.jpg'
-        # Composite the supplied white-on-black mark as luminance coverage.
-        # Retain its original pixels and trim only the shared preview's margins.
-        mask=Image.open(path).convert('L')
-        bounds=mask.point(lambda value:255 if value>40 else 0).getbbox()
-        if not bounds:raise ValueError('Watermark logo is empty')
-        left,top,right,bottom=bounds
-        bounds=(max(0,left-3),max(0,top-3),min(mask.width,right+3),min(mask.height,bottom+3))
-        self.mask=mask.crop(bounds).point(lambda value:max(0,value-8)*255//247).resize((48,48),Image.Resampling.LANCZOS)
-        brand_font=Path('/System/Library/Fonts/SFNSRounded.ttf')
-        self.font=ImageFont.truetype(str(brand_font if brand_font.is_file() else FONT),18)
+        assets=Path(__file__).with_name('assets')
+        self.mask=Image.open(assets/'starpeople-mark-mono.png').convert('RGBA').getchannel('A').resize((28,28),Image.Resampling.LANCZOS)
+        self.font=ImageFont.truetype(str(assets/'AtkinsonHyperlegible-Regular.ttf'),18)
 
     def draw(self,canvas,frame=None,standby=False,location_ink=None):
         self.location.draw(canvas,frame,standby,ink=location_ink)
@@ -26,8 +17,13 @@ class Watermark:
             crop=frame.resize((1280,720)).convert('L').crop((30,26,285,74)).resize((16,4))
             bright=sum(crop.getdata())/(16*4)>155
         ink=(155,201,140) if standby else (17,17,17) if bright else (255,255,255)
-        logo=Image.new('RGBA',self.mask.size,(*ink,0));logo.putalpha(self.mask.point(lambda a:round(a*.88)))
-        canvas.alpha_composite(logo,(30,26))
+        logo=Image.new('RGBA',self.mask.size,(*ink,0))
+        logo.putalpha(self.mask.point(lambda a:round(a*.88)))
+        canvas.alpha_composite(logo,(36,35))
         draw=ImageDraw.Draw(canvas)
-        draw.text((90,35),'StarPeople.ai',font=self.font,anchor='lt',fill=(*ink,225))
-        draw.text((90,53),'Network',font=self.font,anchor='lt',fill=(*ink,225))
+        lines=('starpeople.ai','network')
+        heights=[self.font.getbbox(line,anchor='lt')[3] for line in lines]
+        y=49-(sum(heights)+2)/2
+        for line,height in zip(lines,heights):
+            draw.text((72,round(y)),line,font=self.font,anchor='lt',fill=(*ink,225))
+            y+=height+2

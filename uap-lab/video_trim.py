@@ -31,8 +31,8 @@ def session_for(data,key):
  if folder.is_symlink():raise ValueError('Unsafe recording path')
  return folder
 
-def status(data,key):
- try:folder=session_for(data,key)
+def status(data,key,folder=None,scope='detection'):
+ try:folder=folder or session_for(data,key)
  except ValueError:return dict(available=False)
  request=read(folder/'review-trim.json',{})
  decision=read(folder/'archive-decision.json',{})
@@ -42,15 +42,19 @@ def status(data,key):
  # after the requested revision has already finished.
  retrying=error=='Review changed during export; awaiting updated export'
  from archive_links import bundle_url,bundle_updating
- return dict(available=True,session_id=folder.name,bundle_url=bundle_url(folder),bundle_updating=bundle_updating(folder),request=request,error=None if applied or retrying else error,applied=applied)
+ return dict(available=True,session_id=folder.name,bundle_url=bundle_url(folder),bundle_updating=bundle_updating(folder),request=request if request.get('scope','detection')==scope else {},error=None if applied or retrying else error,applied=applied)
 
-def save(data,body):
+def save(data,body,folder=None,scope='detection'):
  from email_review import folder_for
  import lab
- key=body.get('id','');out=folder_for(data,key);folder=session_for(data,key)
+ key=body.get('id','');out=folder_for(data,key);folder=folder or session_for(data,key)
  if body.get('reset') is True:request=dict(enabled=False,event_id=key)
  else:
   clip=read(out/'review-clip.json',{});timeline=clip.get('timeline',[])
+  if scope=='continuous':
+   from review_playback import frame_times
+   timeline=[{'time':t} for t in sorted(frame_times(folder/'video.mp4'))]
+   clip={'source_frames_verified':True}
   if not clip.get('source_frames_verified') or len(timeline)<2:raise ValueError('Wait for the original video to finish preparing.')
   try:start=float(body['start']);end=float(body['end'])
   except (KeyError,TypeError,ValueError):raise ValueError('Enter valid start and end times.') from None
@@ -59,7 +63,7 @@ def save(data,body):
   first=max(0,bisect.bisect_right(times,start+.001)-1);last=bisect.bisect_left(times,end-.001)
   if last<=first:raise ValueError('The trim must contain at least one frame.')
   request=dict(enabled=True,event_id=key,start=times[first],end=times[last] if last<len(times) else duration,start_frame=first,end_frame=last,timeline_hash=hashlib.sha256(json.dumps(timeline,sort_keys=True).encode()).hexdigest())
- request.update(revision=uuid.uuid4().hex,saved_epoch=time.time())
+ request.update(scope=scope,revision=uuid.uuid4().hex,saved_epoch=time.time())
  with (Path(data)/'email-reviews/review.lock').open('a') as lock:
   import fcntl
   fcntl.flock(lock,fcntl.LOCK_EX)
@@ -68,7 +72,7 @@ def save(data,body):
   if old:lab.save(history/(old['revision']+'.json'),old)
   lab.save(folder/'review-trim.json',request)
   decision=read(folder/'archive-decision.json',{});decision['bundle_ready']=False;lab.save(folder/'archive-decision.json',decision)
- return dict(saved=True,**status(data,key))
+ return dict(saved=True,**status(data,key,folder,scope))
 
 def apply(folder,raw,annotations):
  """Build the primary MP4 from unchanged native encoded frames, then rebase boxes."""
@@ -80,14 +84,31 @@ def apply(folder,raw,annotations):
  if request.get('enabled'):
   from review_playback import native_path
   key=request['event_id'];data=folder.parent.parent/'uap-lab'
-  clip=read(folder.parent.parent/'notifications/outbox'/key/'review-clip.json',{})
-  if hashlib.sha256(json.dumps(clip.get('timeline',[]),sort_keys=True).encode()).hexdigest()!=request['timeline_hash']:raise ValueError('The source clip changed; choose the trim again.')
-  movie=sorted(packets(native_path(data,key)),key=lambda p:p['pts_time'])
-  offset=packet_offset([p['data_hash'] for p in native],[p['data_hash'] for p in movie])
-  start=offset+request['start_frame'];end=offset+request['end_frame']
+  if request.get('scope')=='continuous':
+   from review_playback import frame_times
+   playback=folder/'video.mp4'
+   timeline=[{'time':t} for t in sorted(frame_times(playback))]
+   if hashlib.sha256(json.dumps(timeline,sort_keys=True).encode()).hexdigest()!=request['timeline_hash']:raise ValueError('The source recording changed; choose the trim again.')
+   movie=sorted(packets(playback),key=lambda p:p['pts_time'])
+   offset=packet_offset([p['data_hash'] for p in native],[p['data_hash'] for p in movie])
+   start=offset+request['start_frame'];end=offset+request['end_frame']
+  else:
+   clip=read(folder.parent.parent/'notifications/outbox'/key/'review-clip.json',{})
+   if hashlib.sha256(json.dumps(clip.get('timeline',[]),sort_keys=True).encode()).hexdigest()!=request['timeline_hash']:raise ValueError('The source clip changed; choose the trim again.')
+   movie=sorted(packets(native_path(data,key)),key=lambda p:p['pts_time'])
+   offset=packet_offset([p['data_hash'] for p in native],[p['data_hash'] for p in movie])
+   start=offset+request['start_frame'];end=offset+request['end_frame']
   if not 0<=start<end<=len(native):raise ValueError('The selected trim extends outside the original recording.')
   if any(a['label']=='anomalous' for a in annotations) and not any(a['label']=='anomalous' and start<=a['frame']<end for a in annotations):raise ValueError('The Archive trim must include a reviewed anomalous frame.')
- target=folder/'video.mp4';temp=folder/('trim-'+uuid.uuid4().hex+'.mp4')
+ prior=lab.read(folder/'video-trim.json',{})
+ if request.get('enabled') and (not (folder/'video.mp4').exists() or (prior.get('enabled') and prior.get('video')=='video.mp4')):
+  original=folder/('full-'+uuid.uuid4().hex+'.mp4')
+  try:
+   command([lab.FFMPEG,'-v','error','-i',str(raw),'-map','0:v:0','-an','-c:v','copy','-movflags','+faststart',str(original)])
+   if [p['data_hash'] for p in sorted(packets(original),key=lambda p:p['pts_time'])]!=[p['data_hash'] for p in native]:raise ValueError('Original recording verification failed.')
+   original.replace(folder/'video.mp4')
+  finally:original.unlink(missing_ok=True)
+ target=folder/('video-trimmed.mp4' if request.get('enabled') else 'video.mp4');temp=folder/('trim-'+uuid.uuid4().hex+'.mp4')
  try:
   args=[lab.FFMPEG,'-v','error','-i',str(raw)]
   if start or end<len(native):
@@ -95,19 +116,26 @@ def apply(folder,raw,annotations):
    args+=['-ss',str(times[start]),'-t',str(finish-times[start])]
   command(args+['-map','0:v:0','-an','-c:v','copy','-avoid_negative_ts','make_zero','-movflags','+faststart',str(temp)])
   result=sorted(packets(temp),key=lambda p:p['pts_time'])
-  if [p['data_hash'] for p in result]!=[p['data_hash'] for p in native[start:end]]:raise ValueError('The recording cannot be trimmed at these exact frames without changing its encoded source.')
+  encoding='unchanged_native_encoded_frames'
+  if [p['data_hash'] for p in result]!=[p['data_hash'] for p in native[start:end]]:
+   if not request.get('enabled'):raise ValueError('Could not verify the full original recording.')
+   # Non-keyframe boundaries require a separate encode; the original remains untouched.
+   import subprocess
+   command([lab.FFMPEG,'-v','error','-i',str(raw),'-map','0:v:0','-vf',f'trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS','-an','-fps_mode','passthrough','-threads','2','-c:v','libx264','-crf','16','-preset','veryfast','-movflags','+faststart','-y',str(temp)])
+   if len(packets(temp))!=end-start:raise ValueError('Trimmed frame count does not match the selected range.')
+   encoding='frame_accurate_reencode'
   temp.replace(target)
  finally:temp.unlink(missing_ok=True)
- info=dict(schema=1,trim_revision=request.get('revision'),enabled=bool(request.get('enabled')),original_video='video.mkv',video='video.mp4',source_start_frame=start,source_end_frame=end,frame_count=end-start,original_frame_count=len(native),encoding='unchanged_native_encoded_frames',annotations_outside_trim_preserved_in_stills=True)
+ info=dict(schema=1,trim_revision=request.get('revision'),enabled=bool(request.get('enabled')),original_video='video.mkv',video=target.name,source_start_frame=start,source_end_frame=end,frame_count=end-start,original_frame_count=len(native),encoding=encoding,annotations_outside_trim_preserved_in_stills=True)
  lab.save(folder/'video-trim.json',info)
  return target,[dict(a,frame=a['frame']-start) for a in annotations if start<=a['frame']<end],end-start
 
 
-def download(data,key):
- info=status(data,key)
+def download(data,key,folder=None,scope='detection'):
+ info=status(data,key,folder,scope)
  if not info.get('applied'):raise ValueError('The saved trim is still preparing.')
- folder=session_for(data,key);path=folder/'video.mp4'
+ folder=folder or session_for(data,key);name=read(folder/'video-trim.json',{}).get('video','video.mp4');path=folder/('video-trimmed.mp4' if name=='video-trimmed.mp4' else 'video.mp4')
  if path.is_file() and not path.is_symlink():return path
  receipt=read(folder/'manifest.json',{}).get('internet_archive',{});identifier=receipt.get('identifier','')
- if receipt.get('verified_at') and receipt.get('state') in ('retaining','cleaned') and re.fullmatch('[A-Za-z0-9_.-]+',identifier):return 'https://archive.org/download/'+identifier+'/video.mp4'
+ if receipt.get('verified_at') and receipt.get('state') in ('retaining','cleaned') and re.fullmatch('[A-Za-z0-9_.-]+',identifier):return 'https://archive.org/download/'+identifier+'/'+path.name
  raise ValueError('The trimmed video is unavailable; the full original remains preserved.')

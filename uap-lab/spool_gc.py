@@ -37,7 +37,7 @@ def _cleanup(root,now=None,retention_seconds=86400):
             if completed is not None:
                 if completed.get('generation')==run.name and completed.get('integrity_ok'):recognition_limit=completed['last_pts_seconds']-30
         pending=[]
-        for path in [run/'open-event.json',*run.glob('events/*.json')]:
+        for path in [run/'open-event.json',run/'open-sustained.json',*run.glob('events/*.json')]:
             if not path.exists():continue
             event=json.loads(path.read_text())
             if event.get('state')!='exported':pending.append((event['start_pts'],event['end_pts']))

@@ -46,6 +46,22 @@ class DaytimePolicyTests(unittest.TestCase):
    for delay in (3600,True,'10800',None):
     with self.assertRaises(ValueError):update(directory,{'after_seconds':delay})
 
+ def test_negative_limit_updates_real_policy_without_changing_daytime_settings(self):
+  from negative_backlog import policy
+  with tempfile.TemporaryDirectory() as directory:
+   update(directory,{'daytime_auto_cleanup':True,'after_seconds':21600})
+   state=update(directory,{'negative_backlog_enabled':True})
+   self.assertTrue(state['negative_backlog_enabled'])
+   data=Path(directory)/'uap-lab'
+   self.assertTrue(policy(data)['enabled']);self.assertEqual(policy(data)['max_items'],1000)
+   self.assertFalse(update(directory,{'negative_backlog_enabled':False})['negative_backlog_enabled'])
+   self.assertFalse(policy(data)['enabled'])
+   self.assertEqual(update(directory,{'negative_backlog_limit':2500})['negative_backlog_limit'],2500)
+   self.assertEqual(policy(data)['max_items'],2500);self.assertFalse(policy(data)['enabled'])
+   with self.assertRaises(ValueError):update(directory,{'negative_backlog_limit':True})
+   self.assertTrue(settings(directory)['daytime_auto_cleanup']);self.assertEqual(settings(directory)['after_seconds'],21600)
+   with self.assertRaises(ValueError):update(directory,{'negative_backlog_enabled':'false'})
+
 class AutomaticDeletionTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.data=self.root/'uap-lab';self.sessions=self.root/'sessions';self.sessions.mkdir();(self.data/'email-reviews/examples').mkdir(parents=True)

@@ -20,19 +20,21 @@ class ManualArchiveTests(unittest.TestCase):
   self.assertTrue(self.job['manual_scope']);self.assertTrue(self.a.current_review(self.job))
   self.assertNotIn('anomalous',self.job['custom_tags']);self.assertIn('manual-recording',self.job['custom_tags'])
   self.assertFalse((self.folder/'archive-decision.json').exists())
-  self.assertEqual({x['name'] for x in self.job['files']},{'video.mp4','rf.jsonl','session.json','archive-index.json'})
+  self.assertEqual({x['name'] for x in self.job['files']},{'video.mp4','air-traffic.json','rf.jsonl','session.json','archive-index.json'})
   with patch('internet_archive.PART_SIZE',4):
    for _ in range(30):
     if self.job['state']=='verifying':break
     self.a.send(self.job)
   self.assertEqual(self.job['state'],'verifying')
   self.assertTrue(self.a.verify(self.job));self.assertEqual(self.job['state'],'retaining')
+  self.assertIn('air-traffic.json',self.api.remote)
+  self.assertEqual(load(self.folder/'air-traffic.json',{})['license'],'ODbL-1.0')
   self.a.cleanup(self.job);self.assertTrue((self.folder/'video.mp4').exists())
  def test_updated_annotations_keep_item_and_reuse_verified_original(self):
   self.job['verified_at']=time.time();self.job['state']='retaining';identifier=self.job['identifier']
   rev='a'*64;pair={}
-  for kind in ('original','annotated'):
-   name='reviewed-'+rev+'/frame-000000001-'+kind+'.png';p=self.folder/'frames'/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(kind.encode());pair[kind]=dict(file=name,sha256=hashes(p)['sha256'])
+  for kind in ('original','annotated','motion'):
+   name='reviewed-'+rev+'/frame-000000001-'+kind+('.gif' if kind=='motion' else '.png');p=self.folder/'frames'/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(kind.encode());pair[kind]=dict(file=name,sha256=hashes(p)['sha256'])
   save(self.folder/'frames/reviewed-index.json',dict(review_revision=rev,frames=[pair]))
   save(self.folder/'review-annotations.json',dict(annotations=[dict(label='not_anomalous',bounds=[1,2,3,4])]))
   save(self.folder/'archive-decision.json',dict(export_version=3,bundle_ready=True,confirmed_anomalous=False,review_revision=rev,reviewed_epoch=20))
@@ -41,7 +43,7 @@ class ManualArchiveTests(unittest.TestCase):
   self.a.complete_session_plan(self.job,self.m)
   self.assertEqual(self.job['identifier'],identifier);self.assertEqual(self.job['manual_revision'],rev)
   self.assertIn('video.mp4',self.job['reuse_verified_files']);self.assertIn('video-annotated.mp4',{e['name'] for e in self.job['files']})
-  self.assertEqual(len([e for e in self.job['files'] if e['name'].startswith('frames/')]),3)
+  self.assertEqual(len([e for e in self.job['files'] if e['name'].startswith('frames/')]),4)
  def test_manual_transfer_precedes_automatic_job(self):
   other=dict(self.job,id='automatic',manual_scope=False,manual_priority_epoch=time.time()+1000,last_step=0)
   self.a.job_cache['automatic']=other;self.a.next_discovery=time.time()+1000

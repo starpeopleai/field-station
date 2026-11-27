@@ -75,13 +75,14 @@ def train(folder):
         return np.asarray(result,dtype=np.float32),np.asarray(targets)
     strategy=dataset.get('training_strategy','class_balanced')
     training=[r for r in rows if r['split']=='train'];calibration=[r for r in rows if r['split']=='calibration'];testing=[r for r in rows if r['split']=='test']
-    if strategy not in ('class_balanced','recording_balanced','human_nonlinear_v1'):raise ValueError('Unknown training strategy')
-    if strategy=='human_nonlinear_v1':
-        from human_nonlinear import select_rows,fit_head,ARCHITECTURE
+    if strategy not in ('class_balanced','recording_balanced','human_nonlinear_v1','human_nonlinear_v2'):raise ValueError('Unknown training strategy')
+    if strategy in ('human_nonlinear_v1','human_nonlinear_v2'):
+        from human_nonlinear import select_rows,fit_head,architecture
+        ARCHITECTURE=architecture(strategy)
         training,conflicts=select_rows(rows)
         save(folder/'training-admission.json',dict(recipe=strategy,included=len(training),excluded_conflicting_pixels=conflicts,human_only=True))
         x,y=features(training,1,'training_features');status('fitting_head')
-        head=fit_head(x,training,classes,lambda epoch,total:status('fitting_head',epoch=epoch,total_epochs=total))
+        head=fit_head(x,training,classes,lambda epoch,total:status('fitting_head',epoch=epoch,total_epochs=total),recipe=strategy)
     else:
         x,y=features(training,3,'training_features');status('fitting_head')
         sample_weight=None
@@ -104,9 +105,9 @@ def train(folder):
         cal_x,_=features(calibration,1,'calibration_features');test_x,_=features(testing,1,'test_features')
         with torch.no_grad():cal_p=torch.softmax(head(torch.tensor(cal_x)),dim=1).numpy();test_p=torch.softmax(head(torch.tensor(test_x)),dim=1).numpy()
         thresholds,cal_evidence=calibrate(calibration,cal_p,classes)
-        if strategy=='human_nonlinear_v1':
-            from human_nonlinear import THRESHOLD
-            thresholds={'anomalous':THRESHOLD,'not_anomalous':.85};cal_evidence={'mode':'grouped_human_recipe_20261114','new_run_calibration':False}
+        if strategy in ('human_nonlinear_v1','human_nonlinear_v2'):
+            from human_nonlinear import recipe_config
+            thresholds={'anomalous':recipe_config(strategy)['threshold'],'not_anomalous':.85};cal_evidence={'mode':strategy,'new_run_calibration':False}
         report=evaluate(testing,test_p,classes,thresholds)
     status('converting_coreml');import coremltools as ct
     traced=torch.jit.trace(candidate,torch.rand(1,3,224,224),check_trace=False)
@@ -121,7 +122,7 @@ def train(folder):
     report.update(dataset_fingerprint=dataset['fingerprint'],classes=classes,thresholds=thresholds,calibration=cal_evidence,export_max_absolute_error=max(parity,default=1),automatic_promotion=False,pipeline_qualified=False,feature_preprocessing='Vision/CoreML scaleFill native crops',limitations=['Crop-level evaluation only; native proposal recall, tracking and full-load throughput unqualified','Anomalous means similarity to reviewed examples, not proof of an unexplained event','Binary decisions use the configured threshold; uncertain scores are not a third class'],versions=dict(torch=torch.__version__,torchvision=torchvision.__version__,coremltools=ct.__version__),resources=dict(cpu_threads=2,feature_batch=16,device='cpu'))
     save(folder/'evaluation.json',report)
     if report['export_max_absolute_error']>.025:raise ValueError('Core ML export parity failed')
-    save(folder/'candidate-policy.json',dict(schema_version=1,version=dataset['fingerprint'],classes=classes,thresholds=thresholds,minimum_native_size=8,input_color_space='RGB',preprocessing='Vision scaleFill full-color RGB crop; ImageNet channel normalization',role='review_suggestions_only',automatic_promotion=False,classification_input_scope='review_box',training_recipe=strategy,architecture=ARCHITECTURE if strategy=='human_nonlinear_v1' else 'MobileNetV3 Small + trained linear classifier'))
+    save(folder/'candidate-policy.json',dict(schema_version=1,version=dataset['fingerprint'],classes=classes,thresholds=thresholds,minimum_native_size=8,input_color_space='RGB',preprocessing='Vision scaleFill full-color RGB crop; ImageNet channel normalization',role='review_suggestions_only',automatic_promotion=False,classification_input_scope='review_box',training_recipe=strategy,architecture=ARCHITECTURE if strategy in ('human_nonlinear_v1','human_nonlinear_v2') else 'MobileNetV3 Small + trained linear classifier'))
     status('candidate_ready_for_shadow',evaluation='evaluation.json',dataset_fingerprint=dataset['fingerprint'])
 
 if __name__=='__main__':

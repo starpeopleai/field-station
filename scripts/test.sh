@@ -24,6 +24,8 @@ PYTHONPATH="$PWD/capture-station:$PYTHONPATH" "$PYTHON" -m unittest discover -s 
 
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_label_queue.py'
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_backlog_control.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_backlog_safety.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_negative_backlog.py'
 
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_direct_label_save.py'
 node scripts/test-queue-refresh.cjs
@@ -75,6 +77,12 @@ PYTHONPATH=uap-lab:capture-station:shared "$PYTHON" -m unittest test_archive_lin
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_ce5_audio.py'
 
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_observation_metrics.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_review_model_metrics.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_model_activation_route.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_current_settings.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_review_index_journal.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_review_receipts.py'
+"$PYTHON" -m unittest discover -s uap-lab -p 'test_review_media_location.py'
 
 "$PYTHON" -m unittest discover -s uap-lab -p 'test_review_filters.py'
 
@@ -106,3 +114,11 @@ PYTHONPATH="capture-station:${PYTHONPATH:-}" "$PYTHON" -m unittest test_youtube_
 
 "$PYTHON" -m unittest discover -s uap-lab -p test_live_decisions.py
 "$PYTHON" -m unittest discover -s uap-lab -p test_color_decision.py
+
+"$PYTHON" -m unittest discover -s uap-lab -p test_detection_actions.py
+
+node uap-lab/test_model_score_history.cjs
+
+"$PYTHON" -m unittest discover -s uap-lab -p test_benchmark_context.py
+
+node uap-lab/test_detection_model_cards.js

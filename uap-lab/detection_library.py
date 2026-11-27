@@ -13,7 +13,7 @@ _SOURCE_COUNTS={}
 _COUNT_REFRESH=set()
 _REVISION=0
 _ERRORS={}
-VIEWS={'all','anomalous','not_anomalous','needs_review','human_reviewed','human_reviewed_anomalous'}
+VIEWS={'starred','all','anomalous','not_anomalous','needs_review','human_reviewed','human_reviewed_anomalous'}
 
 def cache_path(data):
  runtime=os.environ.get('XDG_RUNTIME_DIR')
@@ -107,7 +107,7 @@ def collect(data,publish=None):
    if delivery in ('cancelled','expired') or (delivery=='suppressed' and not e.get('review_only')):continue
    name=e.get('native_crop','native-object.png')
    if name not in ('native-object.png','object.png') or not (path.parent/name).is_file():continue
-   rows[key]=dict(id=key,kind='detection',created=e.get('created_epoch',0),label=model_label,human_reviewed=False,image_url='/api/label-queue/image?id='+key,frame_url='/api/label-queue/image?full=1&id='+key,review_url='/email-review?id='+key)
+   rows[key]=dict(id=key,kind='detection',created=e.get('created_epoch',0),detected_epoch=e.get('detected_epoch'),label=model_label,human_reviewed=False,image_url='/api/label-queue/image?id='+key,frame_url='/api/label-queue/image?full=1&id='+key,review_url='/email-review?id='+key)
   rows[key]['model_label']=model_label
   if (path.parent/'object.png').is_file():rows[key]['frame_url']='/api/label-queue/image?full=1&id='+key
   if reviewed:continue
@@ -139,10 +139,12 @@ def current_reviews(rows,records):
  result.extend(reviews.values())
  return sorted(result,key=lambda row:(row['created'],row['id']),reverse=True)
 
-def listing(data,view='all',before='',limit=100,wait=False,classification=None,review_status=None,export=False):
+def listing(data,view='all',before='',limit=100,wait=False,classification=None,review_status=None,export=False,captured_from=None,captured_to=None):
+ from capture_time_filter import bounds,filter_objects
+ start,end=bounds(captured_from,captured_to)
  if view=='manual_recordings':
   from manual_recordings import listing as manual_listing
-  result=manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),before,limit)
+  result=manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),before,limit,captured_from=start,captured_to=end)
   cache_key=str(Path(data));stamp,detection_counts=_SOURCE_COUNTS.get(cache_key,(0,{}))
   if time.monotonic()-stamp>30 and cache_key not in _COUNT_REFRESH:
    _COUNT_REFRESH.add(cache_key)
@@ -171,9 +173,14 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
   try:present=set(os.listdir(Path(data).parent/'notifications/outbox'))
   except FileNotFoundError:present=set()
   rows=[row for row in rows if row['kind']!='detection' or row['id'] in present]
+ from detection_actions import stars,canonical
+ bookmarks=stars(data)
+ rows=[dict(row,starred=canonical(row['id']) in bookmarks) for row in rows]
  if export:return [dict(row) for row in rows if row['kind'] in ('detection','review')]
+ if start is not None or end is not None:rows=filter_objects(data,rows,records,start,end)
  counts={v:0 for v in VIEWS}
  def matches(row,v):
+  if v=='starred':return row.get('starred',False)
   if v=='human_reviewed_anomalous':return row['human_reviewed'] and row['label']=='anomalous'
   return v=='all' or (row['human_reviewed'] if v=='human_reviewed' else (not row['human_reviewed'] and row['label']=='anomalous') if v=='needs_review' else row['label']==v)
  for row in rows:
@@ -183,16 +190,16 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
   from review_filters import select
   filtered,filter_counts=select(filtered,classification or 'all',review_status or 'all')
  filtered_total=len(filtered)
- if before:
-  try:stamp,key=json.loads(base64.urlsafe_b64decode(before.encode()));filtered=[r for r in filtered if (r['created'],r['id'])<(stamp,key)]
-  except Exception:raise ValueError('Invalid object cursor')
+ from review_pins import order,cursor as pin_cursor
+ filtered=order(data,filtered,before)
  from archive_links import attach
  page=attach(data,[dict(r) for r in filtered[:limit]]);cursor=None
- if len(filtered)>limit:cursor=base64.urlsafe_b64encode(json.dumps([page[-1]['created'],page[-1]['id']]).encode()).decode()
+ if len(filtered)>limit:cursor=pin_cursor(page[-1])
  from manual_recordings import listing as manual_listing
  source_counts={'manual_recordings':manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),limit=1)['total']}
  if cached is not None and cached[0]!=0:
-  source_counts['detections']=counts['all'];_SOURCE_COUNTS[str(Path(data))]=(time.monotonic(),dict(source_counts))
+  source_counts['detections']=counts['all']
+  if start is None and end is None:_SOURCE_COUNTS[str(Path(data))]=(time.monotonic(),dict(source_counts))
  return dict(items=page,total=filtered_total,source_counts=source_counts,counts=counts,filter_counts=filter_counts,counts_indexing=cached is None or cached[0]==0,indexing=indexing and not ((view=='needs_review' or review_status=='needs_review') and arrivals_complete),ready=cached is not None or arrivals_complete,index_error=error,next_cursor=cursor,labels=sorted(LABELS))
 
 def label(data,body):
@@ -259,10 +266,15 @@ def label_batch(data,body):
  from email_training import review_batch
  items=body.get('items')
  if not isinstance(items,list) or not 1<=len(items)<=50 or any(not isinstance(i,dict) for i in items):raise ValueError('Choose between 1 and 50 objects')
+ from label_queue import lease_videos
+ lease_videos(data,[i['id'] for i in items if isinstance(i.get('id'),str) and re.fullmatch('[a-f0-9]{32}',i['id'])])
  results=[]
  reset_before=read(Path(data)/'review-pending-reset.json',{}).get('epoch',0)
+ from review_receipts import split
+ results,items=split(data,items,reset_before)
+ if not items:return dict(results=results)
  if not _SAVE_LOCK.acquire(timeout=1):
-  return dict(results=[dict(saved=False,retryable=True,id=i.get('id'),request_id=i.get('request_id'),error='Reviews are saving; retry shortly') for i in items])
+  return dict(results=results+[dict(saved=False,retryable=True,id=i.get('id'),request_id=i.get('request_id'),error='Reviews are saving; retry shortly') for i in items])
  try:
   with review_batch(data):
    for item in items:

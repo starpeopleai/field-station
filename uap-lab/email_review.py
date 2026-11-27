@@ -10,6 +10,8 @@ def folder_for(data,key):
  if not re.fullmatch('[a-f0-9]{32}',key):raise ValueError('Invalid alert')
  root=Path(data).parent/'notifications/outbox';folder=root/key
  if folder.is_symlink() or not (folder/'event.json').is_file():raise ValueError('Alert not found')
+ from label_queue import lease_videos
+ lease_videos(data,[key])
  return folder
 
 def decoded_frames(path):

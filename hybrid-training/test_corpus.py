@@ -14,13 +14,7 @@ class CorpusTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t);row=self.make(root,1);row['human_confirmed']=True
    with self.assertRaises(ValueError):preserve(root,[row],root/'frames')
- def test_machine_splits_preserve_groups_and_exclude_human_rows(self):
+ def test_machine_training_requires_reviewed_foundation(self):
   with tempfile.TemporaryDirectory() as t:
-   root=Path(t);rows=[self.make(root,i,'anomalous' if i%2 else 'not_anomalous',str(i//2)) for i in range(16)]
-   preserve(root,rows,root/'frames');folder,blockers=machine_dataset(root,CODE);self.assertFalse(blockers)
-   data=json.loads((folder/'dataset.json').read_text());self.assertTrue(all(not r['human_confirmed'] and r['label_source']=='machine' for r in data['samples']))
-   for group in {r['group'] for r in data['samples']}:self.assertEqual(len({r['split'] for r in data['samples'] if r['group']==group}),1)
-   self.assertEqual(data['human_training_counts'],{})
- def test_one_recording_can_train_without_fabricating_holdout_scores(self):
-  with tempfile.TemporaryDirectory() as t:
-   root=Path(t);preserve(root,[self.make(root,1),self.make(root,2,'not_anomalous')],root/'frames');folder,blockers=machine_dataset(root,CODE);self.assertFalse(blockers);data=json.loads((folder/'dataset.json').read_text());self.assertEqual(data['evaluation_mode'],'shared_human_benchmark');self.assertTrue(all(r['split']=='train' for r in data['samples']));self.assertEqual(data['fixed_anomaly_threshold'],0.8)
+   root=Path(t)
+   with self.assertRaises(FileNotFoundError):machine_dataset(root,CODE,root/'missing-reviewed-source')
