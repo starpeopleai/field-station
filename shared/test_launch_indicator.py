@@ -11,8 +11,9 @@ class LaunchClockTests(unittest.TestCase):
                     "status": {"id": 6}}
 
     def test_elapsed_across_midnight_and_expiry(self):
-        for seconds, expected in [(0, "Launch -00:00"), (60, "Launch -00:01"),
-                                  (7199, "Launch -01:59"), (7200, "No launch scheduled")]:
+        for seconds, expected in [(0, "Launched just now"), (60, "Launched 1 minute ago"),
+                                  (3599, "Launched 59 minutes ago"), (3600, "Launched 1 hour ago"),
+                                  (7199, "Launched 1 hour ago"), (7200, "No launch scheduled")]:
             with self.subTest(seconds=seconds):
                 self.assertEqual(label([self.row], self.launch.timestamp()+seconds)["text"], expected)
 
@@ -25,4 +26,4 @@ class LaunchClockTests(unittest.TestCase):
 
     def test_most_recent_confirmed_launch_wins(self):
         second = dict(self.row, net=(self.launch + timedelta(minutes=15)).astimezone().isoformat())
-        self.assertEqual(label([self.row, second], self.launch.timestamp()+1800)["text"], "Launch -00:15")
+        self.assertEqual(label([self.row, second], self.launch.timestamp()+1800)["text"], "Launched 15 minutes ago")

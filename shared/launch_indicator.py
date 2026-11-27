@@ -59,7 +59,13 @@ def label(rows, now, center=None):
             if not precise or not net <= now < net + POST_LAUNCH_SECONDS:
                 continue
             minutes = int((now - net) // 60)
-            rank, text, state = 0, f"Launch -{minutes//60:02d}:{minutes%60:02d}", "active"
+            if minutes < 1:
+                text = "Launched just now"
+            elif minutes < 60:
+                text = f"Launched {minutes} minute{'s' if minutes != 1 else ''} ago"
+            else:
+                text = "Launched 1 hour ago"
+            rank, state = 0, "active"
         elif datetime.fromtimestamp(net).date() != today:
             continue
         elif status in (1, 2, 8) and precise and net > now:
