@@ -146,6 +146,14 @@ def attach(root, folder, event):
     """Bounded local read only; failures cannot interrupt capture or human labels."""
     path=Path(folder)/'air-traffic.private.json'
     try:
+        pose_path = Path(folder) / 'camera-pointing.json'
+        if not pose_path.exists():
+            config = settings(root)
+            updated, detected = config.get('updated_epoch'), event.get('detected_epoch')
+            az, elevation = config.get('camera_azimuth_deg'), config.get('camera_elevation_deg')
+            if (number(updated) and number(detected) and 0 < updated <= detected <= time.time()
+                    and number(az) and 0 <= az < 360 and number(elevation) and -90 <= elevation <= 90):
+                atomic(pose_path, dict(updated_epoch=updated, camera_azimuth_deg=az, camera_elevation_deg=elevation))
         if not path.exists():atomic(path,at_time(root,event.get('detected_epoch')))
         from air_traffic_archive import attach_public
         attach_public(root,folder,event)
