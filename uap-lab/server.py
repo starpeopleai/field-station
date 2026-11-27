@@ -380,6 +380,9 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/objects/omit':
                 from object_omission import omit
                 self.json(omit(lab.DATA,value));return
+            if p.path=='/api/objects/lease':
+                from label_queue import renew_review_leases
+                self.json(renew_review_leases(lab.DATA,value));return
             if p.path=='/api/objects/labels':
                 from detection_library import label_batch
                 self.json(label_batch(lab.DATA,value));return

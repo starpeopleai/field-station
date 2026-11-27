@@ -286,3 +286,15 @@ def review_status(data, items):
    import uuid
    temp=diagnostic.with_suffix('.'+uuid.uuid4().hex+'.tmp');temp.write_text(json.dumps(pending_diagnostics));temp.replace(diagnostic)
  return dict(reviewed=closed,confirmed=confirmed,acknowledged=acknowledged)
+
+
+def renew_review_leases(data,value):
+ """Renew displayed and unsaved detections without touching review labels."""
+ keys=value.get('ids')
+ if not isinstance(keys,list) or len(keys)>10000:raise ValueError('Invalid review lease list')
+ if any(not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key) for key in keys):raise ValueError('Invalid detection ID')
+ marks=read(Path(data)/'omitted-objects.json',{}).get('objects',{})
+ omitted=[key for key in set(keys) if key in marks]
+ active=set(keys)-set(omitted)
+ lease_videos(data,active)
+ return dict(protected=len(active),expires_in=900,omitted=omitted)

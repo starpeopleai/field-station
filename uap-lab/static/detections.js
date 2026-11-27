@@ -149,9 +149,24 @@
  window.fieldReviewHasPending=()=>pending.size>0;
  window.addEventListener('station-backlog-cleared',()=>{void reset();});
  window.addEventListener('online',drain);window.addEventListener('station-reconnected',e=>{token=e.detail.token;drain();});
+ let renewingReviewLease=false;
+ async function renewReviewLease(){
+  if(!token||renewingReviewLease||window.FIELD_PUBLIC_READ_ONLY===true)return;
+  const ids=[...new Set([...rows.keys(),...pending.keys()])].filter(id=>/^[a-f0-9]{32}$/.test(id));
+  if(!ids.length)return;renewingReviewLease=true;
+  try{for(let offset=0;offset<ids.length;offset+=10000){
+   const result=await api('/api/objects/lease',{ids:ids.slice(offset,offset+10000)});
+   for(const id of result.omitted||[]){const item=pending.get(id);if(item){forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);}rows.delete(id);selected.delete(id);deletedIds.add(id);[...$('detectionQueue').children].find(n=>n.dataset.id===id)?.remove();}
+   if(result.omitted?.length){selection();if(pending.size)progress();else notice('Omitted detections removed. No labels waiting for confirmation.');}
+  }}catch{}finally{renewingReviewLease=false;}
+ }
+ // Protect the whole loaded page, including off-screen selections and unsaved labels.
+ setInterval(renewReviewLease,60000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void renewReviewLease();});
+ window.addEventListener('online',renewReviewLease);
  setInterval(()=>{if(pending.size)drain();},5000);
  // Refresh only when idle; never replace a selection or open inspection.
  setInterval(()=>{if(!document.hidden&&!loading)refresh(rows.size>100||selected.size>0||deleting.size>0||starring.size>0||$('queueFrame').open||window.scrollY>=150||!!document.querySelector('.detection-card:hover,.controls-open'));},15000);
  new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&rows.size)load();},{rootMargin:'200px'}).observe($('moreDetections'));
- api('/api/labeled-frames/token').then(async d=>{const cutoff=d.pending_reset?.epoch||0;let discarded=0;for(const [id,item] of pending){if(cutoff&&(!item.body.queued_at||item.body.queued_at<=cutoff)){forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);discarded++;}}token=d.token;await reset();progress();if(discarded)notice(discarded+' pending labels discarded as requested');await drain();}).catch(e=>{notice(e.message);});
+ api('/api/labeled-frames/token').then(async d=>{const cutoff=d.pending_reset?.epoch||0;let discarded=0;for(const [id,item] of pending){if(cutoff&&(!item.body.queued_at||item.body.queued_at<=cutoff)){forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);discarded++;}}token=d.token;await renewReviewLease();await reset();progress();if(discarded)notice(discarded+' pending labels discarded as requested');await drain();}).catch(e=>{notice(e.message);});
 })();
