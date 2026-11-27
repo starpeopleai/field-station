@@ -67,3 +67,42 @@ class RequestPublicationTests(unittest.TestCase):
    control.save(Path(directory)/'environment.json',dict(CAPTURE_VOLUME=directory,CAPTURE_VOLUME_ID='test'))
    control.save(control.RUN/'latest.json',dict(phase='queued',request_id='new',busy=True,queued_epoch=time.time()-60))
    self.assertEqual(control.status()['phase'],'error')
+
+class DeploymentLeaseTest(unittest.TestCase):
+ def test_media_cleanup_allows_model_switch_and_retains_retention_lease(self):
+  import contextlib,fcntl,json,sys,types
+  from unittest.mock import patch
+  import backlog_control as control
+
+  with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as patches:
+   app=Path(temporary);volume=app/'volume';volume.mkdir()
+   (volume/'.field-station-volume').write_text('test-volume')
+   for name in ('auto-training','maintenance/retention','retention-audit','volume/uap-lab/recognition'):
+    (app/name).mkdir(parents=True,exist_ok=True)
+   (app/'environment.json').write_text(json.dumps({'CAPTURE_VOLUME':str(volume),'CAPTURE_VOLUME_ID':'test-volume'}))
+   (app/'maintenance/retention/config.json').write_text(json.dumps({'audit':str(app/'retention-audit')}))
+   deployment=app/'auto-training/deployment.lock';retention=app/'retention-audit/worker.lock'
+   @contextlib.contextmanager
+   def lease(path):
+    with path.open('a') as file:
+     fcntl.flock(file,fcntl.LOCK_EX|fcntl.LOCK_NB);yield
+   def reset(*args):
+    with self.assertRaises(BlockingIOError),lease(deployment):pass
+    return {}
+   def clear(*args,**kwargs):
+    with lease(deployment):pass
+    with self.assertRaises(BlockingIOError),lease(retention):pass
+    return {'completed':True}
+   patches.enter_context(patch.object(control,'APP',app))
+   patches.enter_context(patch.object(control,'RUN',app/'audit'))
+   (app/'audit'/'case').mkdir(parents=True)
+   patches.enter_context(patch.object(Path,'is_mount',return_value=True))
+   patches.enter_context(patch.object(control,'stop_orphaned_service'))
+   patches.enter_context(patch.object(control.subprocess,'run',return_value=types.SimpleNamespace(returncode=1)))
+   patches.enter_context(patch.dict(sys.modules,{'provisional_station':types.SimpleNamespace(lease=lease),
+       'backlog_reset':types.SimpleNamespace(reset=reset),'label_queue':types.SimpleNamespace(clear_backlog=clear)}))
+   paths=sys.path[:];self.addCleanup(lambda:sys.path.__setitem__(slice(None),paths))
+   control.work('case')
+   receipt=json.loads((app/'audit/latest.json').read_text())
+   self.assertEqual(receipt['phase'],'complete',receipt)
+   self.assertEqual(receipt['review'],{'completed':True})

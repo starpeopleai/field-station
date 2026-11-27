@@ -105,5 +105,5 @@ def decorate(data,value):
   import logging
   logging.getLogger(__name__).error('Model thumbnail results unavailable: %s',exc)
   for row in value.get('items',[]):
-   if row.get('kind')!='manual_recording':row['model_classifications']=[dict(lane=lane,state='unavailable') for lane in ('human','experimental','hybrid','machine')]
+   if row.get('kind')!='manual_recording':row['model_classifications']=[dict(lane=lane,state='unavailable') for lane in ('human','experimental','hybrid','machine','rotation')]
   return value

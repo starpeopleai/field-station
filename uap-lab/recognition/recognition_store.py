@@ -2,6 +2,7 @@
 import json,sqlite3,zlib,os,time
 from pathlib import Path
 import numpy as np
+from journal_codec import encode_observations
 try:
  import orjson
 except ImportError:
@@ -42,9 +43,10 @@ class RecognitionStore:
   if not ranges:return
   folder=self.path.parent/'partitions';folder.mkdir(exist_ok=True)
   temp=folder/(str(time.time_ns())+'.pending');dest=temp.with_suffix('.sqlite')
-  archive=sqlite3.connect(temp)
-  try:self.db.backup(archive);archive.execute('PRAGMA journal_mode=DELETE');archive.commit()
-  finally:archive.close()
+  # A backup copies the entire freelist left by prior rollovers. Compact the
+  # committed snapshot before publication so empty pages cannot accumulate
+  # in every immutable partition. The source is pruned only after fsync.
+  self.db.execute('VACUUM INTO ?', (str(temp),))
   with temp.open('rb') as f:os.fsync(f.fileno())
   temp.replace(dest)
   fd=os.open(folder,os.O_RDONLY)
@@ -62,7 +64,7 @@ class RecognitionStore:
  def add(self,generation,row,model):
   archived=self.db.execute('SELECT last_sequence FROM archived_ranges WHERE generation=?',(generation,)).fetchone()
   if archived and row['sequence']<=archived[0]:raise sqlite3.IntegrityError('Native frame already archived')
-  self.db.execute('INSERT INTO frames VALUES(?,?,?,?,?,?)',(generation,row['sequence'],row['pts_seconds'],row['received_epoch'],model,encode(row['observations'])))
+  self.db.execute('INSERT INTO frames VALUES(?,?,?,?,?,?)',(generation,row['sequence'],row['pts_seconds'],row['received_epoch'],model,encode_observations(encode(row['observations']))))
  def commit(self,state,background):
   state=dict(state,background_shape=list(background.shape) if background is not None else None,background_encoding='zlib')
   self.db.execute('INSERT OR REPLACE INTO checkpoint VALUES(1,?,?)',(encode(state),zlib.compress(background.tobytes() if background is not None else b'',1)));self.db.commit();self.rotate()

@@ -92,33 +92,35 @@ def work(request):
   if not root.is_mount() or (root/'.field-station-volume').read_text().strip()!=env['CAPTURE_VOLUME_ID']:raise RuntimeError('Station volume identity mismatch')
   retention_config=read(APP/'maintenance/retention/config.json',{})
   retention_lease=lease(Path(retention_config['audit'])/'worker.lock') if retention_config else contextlib.nullcontext()
-  with lease(APP/'auto-training/deployment.lock'),retention_lease:
-   try:
-    for role in ('recognition',):
-     label='app.ufo-files.field.'+role
-     if subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode==0:
-      subprocess.run(['launchctl','bootout',domain+'/'+label],capture_output=True,check=True);stopped.append(label)
-    stop_orphaned_service(APP/'uap-lab/recognition/recognition_service.py')
-    with lease(root/'uap-lab/recognition/service.lock'):
-     if 'analysis' not in record:record['analysis']=reset(APP,root,audit/'checkpoint');update()
-    # Only the analysis reset requires the services to be offline. Restore
-    # them before the slower, separately locked deletion of review media.
-    for label in reversed(stopped):
-     r=subprocess.run(['launchctl','bootstrap',domain,str(Path.home()/'Library/LaunchAgents'/(label+'.plist'))],capture_output=True)
-     if r.returncode and subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode:raise RuntimeError('Could not restart '+label)
-    stopped.clear();marker.unlink(missing_ok=True)
-    record['phase']='deleting';update()
-    record['review']=clear_backlog(root/'uap-lab',cutoff=record['started_epoch']);update()
-   finally:
-    errors=[]
-    for label in reversed(stopped):
-     for attempt in range(15):
+  with contextlib.ExitStack() as leases:
+   with lease(APP/'auto-training/deployment.lock'):
+    leases.enter_context(retention_lease)
+    try:
+     for role in ('recognition',):
+      label='app.ufo-files.field.'+role
+      if subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode==0:
+       subprocess.run(['launchctl','bootout',domain+'/'+label],capture_output=True,check=True);stopped.append(label)
+     stop_orphaned_service(APP/'uap-lab/recognition/recognition_service.py')
+     with lease(root/'uap-lab/recognition/service.lock'):
+      if 'analysis' not in record:record['analysis']=reset(APP,root,audit/'checkpoint');update()
+     # Only the analysis reset requires the services to be offline. Restore
+     # them before the slower, separately locked deletion of review media.
+     for label in reversed(stopped):
       r=subprocess.run(['launchctl','bootstrap',domain,str(Path.home()/'Library/LaunchAgents'/(label+'.plist'))],capture_output=True)
-      if r.returncode==0 or subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode==0:break
-      time.sleep(1)
-     else:errors.append(label)
-    marker.unlink(missing_ok=True)
-    if errors:raise RuntimeError('Could not restart '+', '.join(errors))
+      if r.returncode and subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode:raise RuntimeError('Could not restart '+label)
+     stopped.clear();marker.unlink(missing_ok=True)
+    finally:
+     errors=[]
+     for label in reversed(stopped):
+      for attempt in range(15):
+       r=subprocess.run(['launchctl','bootstrap',domain,str(Path.home()/'Library/LaunchAgents'/(label+'.plist'))],capture_output=True)
+       if r.returncode==0 or subprocess.run(['launchctl','print',domain+'/'+label],capture_output=True).returncode==0:break
+       time.sleep(1)
+      else:errors.append(label)
+     marker.unlink(missing_ok=True)
+     if errors:raise RuntimeError('Could not restart '+', '.join(errors))
+   record['phase']='deleting';update()
+   record['review']=clear_backlog(root/'uap-lab',cutoff=record['started_epoch']);update()
   record.update(phase='complete',busy=False,finished_epoch=time.time())
  except Exception as exc:record.update(phase='error',busy=False,error=str(exc),finished_epoch=time.time())
  update()

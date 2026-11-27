@@ -1,4 +1,5 @@
 """Repair a lagging event journal from contiguous, durable recognition results."""
+from journal_codec import decode_observations
 import json,sqlite3,time
 from pathlib import Path
 from spool_events import atomic
@@ -28,7 +29,7 @@ def recover_event_journal(journal,store_path,recognition_state):
    if not ordered or ordered[0][0]!=expected:raise ValueError('Missing durable recognition frame during journal recovery; evidence retained')
    for sequence,pts,epoch,model,raw in ordered:
     if sequence!=expected:break
-    observations=json.loads(raw);boxes=[o['box'] for o in observations]
+    observations=decode_observations(raw);boxes=[o['box'] for o in observations]
     state=dict(journal.previous,phase='analyzing',error=None,last_sequence=sequence,last_pts_seconds=pts,analyzed_epoch=time.time(),analyzed_frames=journal.previous.get('analyzed_frames',0)+1,generation_analyzed_frames=journal.previous.get('generation_analyzed_frames',0)+1)
     timing=dict(sequence=sequence,pts_seconds=pts,received_epoch=epoch)
     journal.process((timing,boxes,{},previous['generation'],model,state));expected+=1

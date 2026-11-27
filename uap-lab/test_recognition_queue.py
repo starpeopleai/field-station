@@ -36,3 +36,11 @@ class LocalQueueTests(unittest.TestCase):
  def test_ambiguous_mapping_is_not_accepted(self):
   with patch('recognition_review.mapping',side_effect=ValueError('ambiguous')):
    with self.assertRaisesRegex(ValueError,'ambiguous'):local_summary(self.meta)
+
+ def test_mixed_compressed_and_legacy_observations(self):
+  from recognition.journal_codec import encode_observations
+  rows=[{'suggested_label':'anomalous'}]*100
+  with closing(sqlite3.connect(self.data/'recognition/results.sqlite')) as db,db:
+   db.execute('UPDATE frames SET observations=? WHERE sequence=6',(encode_observations(json.dumps(rows)),))
+  with patch('recognition_review.mapping',return_value=self.origin):r=local_summary(self.meta)
+  self.assertEqual(r['processed_frames'],60);self.assertEqual(r['suggested_label_counts'],{'unknown':1,'anomalous':100})

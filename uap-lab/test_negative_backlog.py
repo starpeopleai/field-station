@@ -142,4 +142,18 @@ class CleanupTests(unittest.TestCase):
         self.event();self.event();self.assertEqual(self.run_cycle()['deleted'],1)
         self.assertTrue((folder/'native-object.png').exists());self.assertTrue((rf/'native-object.png').exists())
 
+    def test_new_review_during_discovery_refreshes_protection_and_continues(self):
+        import negative_backlog
+        reviewed,folder=self.event();excess,extra=self.event();self.event()
+        original=negative_backlog.discover
+        def discover(*args):
+            result=original(*args)
+            save(self.data/'email-reviews/training-manifest.json',dict(examples=[dict(event_id=reviewed,human_confirmed=True)]))
+            return result
+        with patch('negative_backlog.discover',side_effect=discover):result=self.run_cycle()
+        self.assertEqual(result['review_index_refreshes'],1)
+        self.assertTrue((folder/'native-object.png').exists())
+        self.assertFalse((extra/'native-object.png').exists())
+        self.assertEqual(result['deleted'],1)
+
 if __name__=='__main__':unittest.main()

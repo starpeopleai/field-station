@@ -47,8 +47,11 @@ def verify(root):
    examples+=1
  return dict(examples=examples,images=images,bytes=size,files=len(inventory)),inventory
 
-def run(root,helper,transport):
- if not Path('/Volumes/UFO-Work').is_mount() or not (Path('/Volumes/UFO-Work')/'.hq-review-volume').is_file():raise ValueError('HQ external backup volume is unavailable')
+def run(root,helper,transport,volume=Path('/Volumes/UFO-Work'),volume_id=None):
+ volume=Path(volume);root=Path(root)
+ if not volume.is_mount() or not root.resolve().is_relative_to(volume.resolve()):raise ValueError('HQ external review mirror volume is unavailable')
+ if volume_id and (volume/'.training-volume').read_text().strip()!=volume_id:raise ValueError('Wrong training mirror volume')
+ if not volume_id and not (volume/'.hq-review-volume').is_file():raise ValueError('Unverified review mirror volume')
  root.mkdir(parents=True,exist_ok=True)
  with (root/'backup.lock').open('a') as lock:
   try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -95,4 +98,4 @@ def run(root,helper,transport):
   except Exception as exc:
    save(status,dict(state='retry_pending',error=str(exc),updated_epoch=time.time()));raise
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--helper',type=Path,default=Path('/Users/ufo-files-agent/field-migration/ssh-field.py'));a=p.parse_args();run(a.root,a.helper,Path(__file__).with_name('ssh_transport.py'))
+ p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--helper',type=Path,default=Path('/Users/ufo-files-agent/field-migration/ssh-field.py'));p.add_argument('--volume',type=Path,default=Path('/Volumes/UFO-Work'));p.add_argument('--volume-id');a=p.parse_args();run(a.root,a.helper,Path(__file__).with_name('ssh_transport.py'),a.volume,a.volume_id)

@@ -11,6 +11,9 @@ def slot(epoch):
  local=datetime.fromtimestamp(epoch,ZONE);start=local.replace(hour=local.hour//6*6,minute=0,second=0,microsecond=0);end=start+timedelta(hours=6)
  return dict(key=start.isoformat(),start=start.timestamp(),end=end.timestamp(),title='StarPeople.ai Network | '+start.strftime('%b %d, %Y')+' | '+start.strftime('%H:%M')+'–'+end.strftime('%H:%M')+' Pacific')
 
+class RequestNotStarted(RuntimeError):
+ pass
+
 class Studio:
  """Reuse the operator's signed-in Safari session; never export browser credentials."""
  def evaluate(self,js):
@@ -23,7 +26,11 @@ class Studio:
   key=key or '__ufn_'+uuid.uuid4().hex
   js="""(()=>{const n=document.querySelector('ytls-apiary-network-manager');if(!n)throw Error('Open a YouTube live dashboard');const info={...n.SUPPORTED_ENDPOINTS_.find(x=>x.path===PATH)};if(!info.path)throw Error('Unsupported Studio operation');delete info.successAction;delete info.failAction;delete info.requestAction;if(RETAINED){const prior=window[KEY]||JSON.parse(sessionStorage.getItem(KEY)||'null');if(prior){window[KEY]=prior;return 'resuming'}}window[KEY]={pending:true};n.postApiaryData_(info,{},'data',BODY).then(r=>{window[KEY]={done:true,result:r.data||r};if(RETAINED)sessionStorage.setItem(KEY,JSON.stringify(window[KEY]))},e=>{window[KEY]={done:true,error:String(e)}});return 'started'})()"""
   js=js.replace('PATH',json.dumps(path)).replace('KEY',json.dumps(key)).replace('BODY',json.dumps(body)).replace('RETAINED','true' if retained else 'false')
-  self.evaluate(js)
+  try:self.evaluate(js)
+  except RuntimeError as exc:
+   if 'Keep a signed-in YouTube Studio live dashboard tab open' not in str(exc):raise
+   subprocess.run(['open','-a','Safari','https://studio.youtube.com/channel/UCQA8_F18kJhUA1hE0MpyHug/livestreaming'],check=True,timeout=30)
+   raise RequestNotStarted('Reopened missing YouTube Studio dashboard; request was not sent') from exc
   for _ in range(45):
    value=json.loads(self.evaluate('JSON.stringify(window['+json.dumps(key)+']||{pending:true})'))
    if value.get('done'):
@@ -88,7 +95,9 @@ def cycle(config,root,api,epoch=None):
     if not video:raise RuntimeError('Broadcast creation outcome uncertain; reconciliation required for '+entry['key'])
    else:
     entry['creation_pending']=True;persist()
-    video=api.create(entry,config)
+    try:video=api.create(entry,config)
+    except RequestNotStarted:
+     entry['creation_pending']=False;persist();raise
    entry.update(video_id=video,watch_url='https://www.youtube.com/watch?v='+video,creation_pending=False);persist()
   if not entry.get('configured'):
    api.configure(entry['video_id']);entry['configured']=True;persist()

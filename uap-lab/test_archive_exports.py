@@ -62,6 +62,12 @@ class ExportTests(unittest.TestCase):
   self.assertEqual(len(index['frames']),1);self.assertEqual(index['annotation_count'],2)
   row=index['frames'][0];self.assertEqual(row['frame'],2);self.assertEqual(len(row['annotations']),2)
   from PIL import Image
+  motion=row['motion'];path=self.folder/'frames'/motion['file']
+  self.assertEqual(motion['annotation_id'],'1')
+  self.assertIn(0,motion['sample_offsets_seconds'])
+  self.assertEqual(motion['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+  with Image.open(path) as gif:
+   self.assertEqual(gif.format,'GIF');self.assertGreater(gif.n_frames,1)
   source=np.array(Image.open(self.folder/'frames'/row['original']['file']))
   marked=np.array(Image.open(self.folder/'frames'/row['annotated']['file']))
   np.testing.assert_array_equal(source,original[2])

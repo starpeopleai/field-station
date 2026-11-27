@@ -9,6 +9,7 @@ from crop_client import CropClassifier
 from native_tracks import NativeTracks
 from recognition_store import AsyncRecognitionStore as RecognitionStore
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+import detection_zone
 from native_motion import NativeMotion
 from native_frames import timing_rows
 from temporal_runtime import TemporalRuntime
@@ -41,6 +42,8 @@ def read_index(folder,offset):
 
 def run(config,output,stop,start_segment=None,stop_segment=None):
  output.mkdir(parents=True,exist_ok=True);root=Path(config['spool']);policy=read(Path(config['policy']));base_policy=policy;cv2.setNumThreads(int(config.get('motion_threads',2)))
+ from sustained_motion import SustainedMotion
+ sustained=SustainedMotion(root) if config.get("event_owner") and stop_segment is None else None
  sink=None
  alerts=AlertOutbox(config['alert_outbox'],config.get('alert_not_before_epoch',0)) if config.get('alert_outbox') and stop_segment is None else None
  cv2.setNumThreads(int(config.get('motion_threads',2)))
@@ -83,6 +86,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
   nonlocal uncommitted,last_checkpoint
   checkpoint_started=time.perf_counter()
   state.update(tracks=tracker.tracks,track_serial=tracker.serial)
+  if sustained:sustained.checkpoint()
   if sink:sink.flush()
   future=store.commit(state,detector.background);pin();uncommitted=0;last_checkpoint=time.monotonic();stages['checkpoint']+=time.perf_counter()-checkpoint_started
   return future
@@ -91,6 +95,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
   row,future=pending.popleft();wait_started=time.perf_counter();results=future.result();stages['classification_wait']+=time.perf_counter()-wait_started
   if any('error' in result for result in results):raise ValueError('Object classification failed; source retained for retry')
   indices=row.pop('classification_indices');apply_results(row['observations'],indices,results,policy)
+  if sustained:sustained.update(state['generation'],row,state['model'])
   crops=row.pop('alert_crops',[])
   if alerts:alerts.submit(state['generation'],row,indices,crops)
   row.pop('alert_frame',None);row.pop('alert_color_source',None)
@@ -102,7 +107,9 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
    while not stop.is_set():
     if stop_segment is None and read(Path(__file__).resolve().parents[2]/'capture-station/run/capture-control.json',{}).get('paused'):
      if classifier.proc.poll() is not None:raise RuntimeError('Active model process exited')
-     status.update(phase='capture_paused',model=policy['version'],runtime_ready=True,error=None,updated_epoch=time.time())
+     lane=config.get('decision_lane','human')
+     policy=decision_policy(base_policy,lane,decision_settings(output.parent))
+     status.update(phase='capture_paused',model=policy['version'],runtime_ready=True,decision_lane=lane,decision_settings_revision=policy.get('settings_revision',0),error=None,updated_epoch=time.time())
      atomic(output/'status.json',status)
      stop.wait(2);continue
     folder=root/state['generation']
@@ -114,6 +121,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
       # EOF may have been read just before capture appended its final segment.
       final_line,_,_=read_index(folder,state['offset'])
       if final_line.endswith(b'\n'):continue
+      if sustained:sustained.finish(True)
       created=read(folder/'generation.json')['created_epoch'];later=sorted((read(p/'generation.json')['created_epoch'],p.name) for p in root.glob('run-*') if (p/'generation.json').exists() and read(p/'generation.json')['created_epoch']>created)
       if later:
        checkpoint().result();pin() # Acknowledge the closed generation before replacing its cursor.
@@ -139,6 +147,7 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
      prefetched=(str(next_source),next_entry['sha256'],verifier.submit(verify_source,next_source,next_entry['sha256']))
     timings=timing_rows(folder,entry['start'],entry['end']);pts_values=[t['pts_seconds'] for t in timings];health=read(folder/'capture-health.json',{});stages['source_verification']+=time.perf_counter()-source_started;previous_finish=time.perf_counter()
     display_current=preview is not None and time.time()-entry.get('end_epoch',0)<3
+    zone=detection_zone.settings(read(output.parent.parent/"station-settings.json",{}))
     unavailable_pts=[]
     for image,header in decoder.frames(source,preview_interval=.2 if display_current else 0,color=True):
      frame_started=time.perf_counter();stages['decode_wait']+=frame_started-previous_finish
@@ -158,6 +167,9 @@ def run(config,output,stop,start_segment=None,stop_segment=None):
       state['source_timestamp_gaps']+=int(delta>1.5/59.94005994)
      if state['coverage_first_sequence'] is None:state['coverage_first_sequence']=seq
      boxes,metrics=detector.update(image,pts)
+     if boxes and zone['zone_enabled']:
+      boxes=detection_zone.filter_boxes(boxes,image.shape,zone['zone_bounds'])
+      metrics=dict(metrics,candidate_count=len(boxes))
      if sink:sink.submit(timing,boxes,metrics,state['generation'],health,state)
      observations=tracker.update(seq,pts,boxes);encoded=[];indices=[];contexts=[]
      for observation_index,observation in enumerate(observations):

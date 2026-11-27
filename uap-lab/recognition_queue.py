@@ -1,4 +1,5 @@
 from recognition_history import History
+from recognition.journal_codec import decode_observations
 """Reuse durable native recognition without accepting suggestions as reviewed labels."""
 import json,sqlite3
 from contextlib import closing
@@ -34,7 +35,7 @@ def local_summary(meta):
         rows=conn.execute('SELECT sequence,model,observations FROM frames WHERE generation=? AND sequence>=? AND sequence<=? ORDER BY sequence',(generation,expected[0],expected[-1]))
         for sequence,model,encoded in rows:
             observed.append(sequence);models.add(model)
-            for observation in json.loads(encoded):
+            for observation in decode_observations(encoded):
                 labels[observation['suggested_label']]+=1;proposals+=1
     if observed!=expected:return dict(state='waiting_local_analysis',classification='unclassified',processed_frames=len(observed),frame_count=len(expected),automatic_deletion=False)
     if len(models)!=1:raise ValueError('Mixed recognition model versions require separate review')

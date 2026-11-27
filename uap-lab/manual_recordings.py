@@ -8,7 +8,7 @@ def read(path,default):
  try:return json.loads(path.read_text())
  except (OSError,ValueError):return default
 
-def listing(data,station,before='',limit=100):
+def listing(data,station,before='',limit=100,captured_from=None,captured_to=None):
  data,station=Path(data),Path(station)
  limit=max(1,min(100,int(limit)))
  # The durable manual-session index is independent of the detection backlog.
@@ -40,12 +40,14 @@ def listing(data,station,before='',limit=100):
   rows.append(dict(id='manual:'+sid,session_id=sid,kind='manual_recording',created=m.get('started_epoch',record.get('created',0)),
    review_url='/manual-review?'+urlencode(dict(session=sid)) if ready else None,state=state,duration_seconds=m.get('elapsed_seconds'),label=label,human_reviewed=reviewed,video_url=url,archive_url=archive,
    upload_state=job.get('state') or ('verified' if archive else 'preparing' if approval.get('upload_requested') else 'queued')))
+ if captured_from is not None or captured_to is not None:
+  from capture_time_filter import includes
+  rows=[r for r in rows if includes(r['created'],captured_from,captured_to)]
  rows.sort(key=lambda r:(r['created'],r['id']),reverse=True);total=len(rows)
- if before:
-  try:stamp,key=json.loads(base64.urlsafe_b64decode(before));rows=[r for r in rows if (r['created'],r['id'])<(stamp,key)]
-  except Exception:raise ValueError('Invalid recording cursor')
+ from review_pins import order,cursor as pin_cursor
+ rows=order(data,rows,before)
  page=rows[:limit];cursor=None
- if len(rows)>limit:cursor=base64.urlsafe_b64encode(json.dumps([page[-1]['created'],page[-1]['id']]).encode()).decode()
+ if len(rows)>limit:cursor=pin_cursor(page[-1])
  return dict(items=page,total=total,counts={'manual_recordings':total},filter_counts=None,counts_indexing=False,indexing=False,ready=True,index_error=None,next_cursor=cursor,labels=[])
 
 

@@ -226,7 +226,7 @@ class InternetArchive:
         removed=len(job['files'])!=old_length
         known={e['name'] for e in job['files']}
         for i,entry in enumerate(job['files']):
-            if entry['name'] in ('air-traffic.json','weather.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4'):
+            if entry['name'] in ('air-traffic.json','weather.json','archive-decision.json','review-annotations.json','review-trim.json','video-trim.json','video.mp4','video-annotated.mp4','video-trimmed.mp4'):
                 updated=dict(name=entry['name'],**hashes(folder/entry['name']))
                 if updated!=entry:job['files'][i]=updated;changed.append(i)
         for path in sorted(folder.iterdir()):
@@ -239,6 +239,8 @@ class InternetArchive:
         # private/configuration folders or follow symlinks.
         known={e['name'] for e in job['files']}
         evidence=[folder/'video-annotated.mp4']
+        trim=load(folder/'video-trim.json',{})
+        if trim.get('enabled') and trim.get('video')=='video-trimmed.mp4':evidence.append(folder/'video-trimmed.mp4')
         if job.get('recovered_evidence'):
             evidence.append(folder/'recovery-original.mp4')
             for directory in ('recovery-segments','recovery-context','recovery-crops'):
@@ -258,9 +260,9 @@ class InternetArchive:
         if still_index.get('review_revision')!=decision.get('review_revision') or not still_index.get('frames'):raise ValueError('Reviewed still pairs are not ready')
         evidence.append(folder/'frames/reviewed-index.json')
         for row in still_index['frames']:
-            for kind in ('original','annotated'):
+            for kind in ('original','annotated',*(['motion'] if 'motion' in row else [])):
                 item=row[kind];name=item['file']
-                if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-'+kind+r'\.png',name):raise ValueError('Invalid reviewed still path')
+                if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-'+kind+(r'\.gif' if kind=='motion' else r'\.png'),name):raise ValueError('Invalid reviewed still path')
                 path=folder/'frames'/name
                 if path.is_symlink() or not path.resolve().is_relative_to(folder.resolve()) or hashes(path)['sha256']!=item['sha256']:raise ValueError('Reviewed still checksum mismatch')
                 evidence.append(path)
