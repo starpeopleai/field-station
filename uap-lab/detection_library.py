@@ -190,12 +190,11 @@ def listing(data,view='all',before='',limit=100,wait=False,classification=None,r
   from review_filters import select
   filtered,filter_counts=select(filtered,classification or 'all',review_status or 'all')
  filtered_total=len(filtered)
- if before:
-  try:stamp,key=json.loads(base64.urlsafe_b64decode(before.encode()));filtered=[r for r in filtered if (r['created'],r['id'])<(stamp,key)]
-  except Exception:raise ValueError('Invalid object cursor')
+ from review_pins import order,cursor as pin_cursor
+ filtered=order(data,filtered,before)
  from archive_links import attach
  page=attach(data,[dict(r) for r in filtered[:limit]]);cursor=None
- if len(filtered)>limit:cursor=base64.urlsafe_b64encode(json.dumps([page[-1]['created'],page[-1]['id']]).encode()).decode()
+ if len(filtered)>limit:cursor=pin_cursor(page[-1])
  from manual_recordings import listing as manual_listing
  source_counts={'manual_recordings':manual_listing(data,Path(os.environ.get("CAPTURE_STATION_ROOT",str(Path(__file__).resolve().parent.parent/"capture-station"))),limit=1)['total']}
  if cached is not None and cached[0]!=0:
