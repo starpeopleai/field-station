@@ -1,10 +1,12 @@
 # Air traffic context
 
-The private camera feed shows a north-up ADS-B aircraft plot. Arrows indicate reported **ground track**, not the aircraft's nose orientation. Missing track data renders as a dot. Hover or tap for callsign, aircraft type, pressure altitude in feet, speed in knots, and track.
+The private camera feed shows an ADS-B aircraft plot oriented camera-up when azimuth is set, otherwise north-up. Arrows indicate reported **ground track**, not the aircraft's nose orientation. Missing track data renders as a dot. Hover or tap for callsign, aircraft type, pressure altitude in feet, speed in knots, and track.
 
 Settings → Radar center address defaults to the Stanford Dish (37.4083, -122.179). This is an operator-selected radar reference, not the automatic county-only station location. Address resolution uses OpenStreetMap Nominatim only on explicit Save; no autocomplete. The entered address and resolved point stay in the private station settings. The geocoder receives the entered address; the traffic provider receives the configured query point. Settings also exposes a radar radius from 1–100 statute miles, defaulting to 15. The radar queries a 15 statute-mile radius by default (13.03 nautical miles); provider requests round up to 14 nautical miles and reports are filtered to the exact configured radius.
 
 The collector polls https://opendata.adsb.fi/api/v3/lat/{lat}/lon/{lon}/dist/{distance} every 15 seconds, with exponential error backoff, Retry-After handling, and an hour pause for rejected configuration/authentication. See https://github.com/adsbfi/opendata for provider terms and limits. Data is attributed to adsb.fi and is for private, non-commercial analysis. This private feed is not added to Internet Archive or public snapshots. Nominatim policy: https://operations.osmfoundation.org/policies/nominatim/.
+
+Private collection runs on a monotonic 15-second schedule; public archive collection and county resolution run in a separate, bounded worker. The browser checks the local endpoint every 5 seconds and retries failed requests after 2.5 seconds, retaining only still-fresh positions during retries.
 
 Aircraft positions older than 30 seconds and known ground traffic are excluded. Feed timestamps are validated. Stale/unavailable data is explicitly shown and does not leave stale arrows on screen. Zero reports is not evidence that the airspace is empty: coverage depends on transponders and receiving stations. No automatic classification or training-label changes are made.
 
@@ -29,3 +31,35 @@ Automatic and manual Internet Archive bundles include `air-traffic.json`, with O
 The Archive planner includes this file in its checksummed inventory and rebuilds that inventory when aircraft evidence changes. Previously collected public samples survive rolling-history expiry. Historical recordings without contemporaneous aircraft data explicitly report unavailable; today's aircraft are never substituted. Manual recordings reviewed after history expiry can lack context if no bundle was prepared while history was retained.
 
 Reload the capture/publisher and recognition services after installing the integration. The collector starts at login and restarts automatically.
+
+## Radar landmarks
+
+Settings → Radar landmarks accepts an address or landmark and an optional short name. Add resolves the address once and saves a private marker; Remove deletes it. Up to 20 markers are supported. Markers use the same adaptive color as the radar, show as labeled diamonds, and remain visible during aircraft-feed delays. Only markers within the configured radius are plotted. Hover or tap a marker for its full name and address. Landmarks do not move the radar center, alter classification, or enter Internet Archive bundles/public snapshots.
+
+## Camera azimuth
+
+Settings → Camera azimuth (° true) accepts a heading clockwise from true north, from 0 through 359.9°. Blank means unknown and hides the marker. No heading is assumed by default. Both station and YouTube radars show a dashed camera bearing and its numeric value. This is a manually entered direction only, not camera field of view, elevation, automatic tracking, or an aircraft-identification match. Changing heading preserves the radar center, radius, and saved landmarks.
+
+Camera elevation (°) stores upward tilt independently: 0° is the horizon, 90° is straight up, and negative angles point below the horizon (minimum −90°). Blank means unknown. This setting does not change the radar's ground-distance projection or imply a calibrated field of view.
+
+When azimuth is set, its direction is at the top of both radars. Compass labels, aircraft positions and tracks, and private landmark positions rotate together. Text stays upright; an unset azimuth retains north-up.
+
+### Side view and estimated camera matches
+
+The side view plots ground distance against estimated height above the camera,
+with equal physical scales on both axes. It includes only aircraft in the camera's
+horizontal bearing envelope; outlined aircraft pass the full rectangular optical
+frustum test (azimuth, elevation, and focal length). Aircraft above the chart's
+height limit are outside the plotted viewport, not necessarily outside the FoV.
+
+Ground elevation is cached from the USGS Elevation Point Query Service for the
+configured radar center, with [Copernicus / Open-Meteo](https://open-meteo.com/en/docs/elevation-api) as a fallback if USGS is unavailable. Changing the center invalidates the cached elevation.
+Settings can override ground altitude in feet above sea level and specify camera
+height above ground. Missing altitude or orientation is unknown, not a match.
+
+Calculations use reported pressure altitude, terrain elevation, and spherical
+Earth curvature. These altitude datums are not exact equivalents: weather,
+refraction, and terrain obstruction are not modeled. This is estimated aircraft
+context, not proof that the optical detection is an aircraft. The YouTube side
+view uses only the licensed public aircraft feed and does not show private
+landmarks, coordinates, or the station's absolute altitude.

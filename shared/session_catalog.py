@@ -1,7 +1,32 @@
 """Indexed recording lookup; manifests remain authoritative for archive decisions."""
-import concurrent.futures,json,os,re,sqlite3
+import concurrent.futures,json,os,re,sqlite3,threading,time,logging,fcntl
 from pathlib import Path
 SID=re.compile(r'[0-9TZ]+-[a-f0-9]{6}')
+
+_REPAIR_LOCK=threading.Lock()
+_REPAIR_PENDING=set()
+_REPAIR_RETRY={}
+
+def request_rebuild(root):
+ """Repair invalid/moved indexes off the request thread; never queue duplicate scans."""
+ root=Path(root);index=configured()
+ if index is None:return
+ key=(str(index),str(root))
+ with _REPAIR_LOCK:
+  if key in _REPAIR_PENDING or time.monotonic()<_REPAIR_RETRY.get(key,0):return
+  _REPAIR_PENDING.add(key)
+ def work():
+  try:
+   with index.with_suffix('.rebuild.lock').open('a') as lock:
+    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:return
+    rebuild(root)
+  except Exception:
+   logging.exception('Recording index repair failed; will retry')
+  finally:
+   with _REPAIR_LOCK:
+    _REPAIR_PENDING.discard(key);_REPAIR_RETRY[key]=time.monotonic()+60
+ threading.Thread(target=work,daemon=True,name='session-index-repair').start()
 
 def configured():
  value=os.environ.get('CAPTURE_SESSION_INDEX')
@@ -65,7 +90,8 @@ def lookup(root,generation,pts=None):
  index=configured();root=Path(root)
  if not index:return None
  try:
-  if (root/'session-catalog-invalid').exists() or not index.is_file():return None
+  if (root/'session-catalog-invalid').exists() or not index.is_file():
+   request_rebuild(root);return None
   with connect(index) as db:
    ready=db.execute('SELECT ready FROM catalog WHERE root=?',(str(root),)).fetchone()
    result=None
@@ -77,8 +103,11 @@ def lookup(root,generation,pts=None):
      db.executemany('INSERT OR IGNORE INTO session_windows VALUES (?,?,?,?)',windows)
      result=[root/'sessions'/r[0] for r in db.execute('SELECT s.id FROM sessions s LEFT JOIN session_windows w ON s.root=w.root AND s.id=w.id WHERE s.root=? AND s.generation=? AND (w.start IS NULL OR (w.start<=? AND w.end>?))',(str(root),generation,pts,pts))]
     else:result=[root/'sessions'/r[0] for r in db.execute('SELECT id FROM sessions WHERE root=? AND generation=?',(str(root),generation))]
-  db.close();return result
- except (OSError,sqlite3.Error):return None
+  db.close()
+  if result is None:request_rebuild(root)
+  return result
+ except (OSError,sqlite3.Error):
+  request_rebuild(root);return None
 
 def rebuild(root):
  """One migration scan. New manifests are maintained incrementally by the writer."""

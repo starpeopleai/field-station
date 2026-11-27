@@ -29,7 +29,7 @@ def attach(data,value):
   with connect(data) as db:
    for row in items:
     if row.get('kind')=='manual_recording':continue
-    signature=identity(row,models);existing=db.execute('SELECT signature,results FROM scores WHERE id=?',(row['id'],)).fetchone()
+    signature=identity(row,models);existing=db.execute('SELECT signature,results,requested FROM scores WHERE id=?',(row['id'],)).fetchone()
     results=json.loads(existing[1]) if existing and existing[0]==signature and existing[1] else {}
     if not existing or existing[0]!=signature:
      db.execute('INSERT OR REPLACE INTO scores VALUES (?,?,?,?,?,0)',(row['id'],signature,json.dumps(row),None,time.time()))

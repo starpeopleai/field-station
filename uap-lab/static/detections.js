@@ -17,6 +17,7 @@
  function progress(){if(!pending.size)return;const failed=[...pending.values()].filter(i=>i.failed).length;notice((pending.size-failed)+' waiting for confirmation'+(failed?' · '+failed+' need attention; choose a label on the returned frames to retry.':([...pending.values()].some(i=>i.durable===false)?'. Browser storage unavailable; keep this page open until saves are confirmed.':'. Labels are retained on this device.')));}
  function restore(item){dismissed.delete(item.row.id);if(!deletedIds.has(item.row.id)&&matches(item.row)&&!rows.has(item.row.id)){rows.set(item.row.id,item.row);$('detectionQueue').prepend(card(item.row));}$('queueEmpty').hidden=rows.size>0;}
  function storageFailure(message){return /\[Errno (28|69|122)\]|no space left on device|disk quota exceeded/i.test(message||'');}
+ function databaseBusy(message){return /database(?: table| schema)? is (?:locked|busy)/i.test(message||'');}
  function missingCropFailure(message){return /\[Errno 2\].*notifications\/outbox\/.*native-object\.png/i.test(message||'');}
  function retrySave(item,error,delay=30000){item.failed=false;item.error=error;item.attempts=0;item.retryAt=Date.now()+delay;persist(item);}
  function fail(item,message){item.failed=true;item.error=message;persist(item);restore(item);}
@@ -163,27 +164,27 @@
   persist(item);
   if(previous){forget(prefix+previous.body.request_id);if(previous.legacyKey)forget(previous.legacyKey);}pending.set(row.id,item);dismissed.add(row.id);selected.delete(row.id);rows.delete(row.id);[...$('detectionQueue').children].find(n=>n.dataset.id===row.id)?.remove();$('queueEmpty').hidden=rows.size>0;progress();if(!bulk){selection();drain();}
  }
- async function drain(){if(draining||!token)return;draining=true;let saved=0,failures=0;
+ async function drain(){if(draining||!token)return;draining=true;let saved=0,discarded=0,failures=0;
   try{const work=[...pending].filter(([,item])=>!item.failed&&(!item.retryAt||item.retryAt<=Date.now()));for(let offset=0;offset<work.length;offset+=50){const batch=work.slice(offset,offset+50);let results;
    try{const response=await api('/api/objects/labels',{items:batch.map(([,item])=>item.body)});results=new Map((response.results||[]).map(r=>[r.request_id,r]));}
-   catch(e){if(e.status===403){try{token=(await api('/api/labeled-frames/token')).token;}catch{}}else if(e.status>=400&&e.status<500&&![408,429].includes(e.status)){for(const [,item]of batch)fail(item,e.message);}failures++;break;}
+   catch(e){if(databaseBusy(e.message)){for(const [,item] of batch)retrySave(item,e.message,5000);}else if(e.status===403){try{token=(await api('/api/labeled-frames/token')).token;}catch{}}else if(e.status>=400&&e.status<500&&![408,429].includes(e.status)){for(const [,item]of batch)fail(item,e.message);}failures++;break;}
    for(const [id,item]of batch){const result=results.get(item.body.request_id);
-    if(result?.discarded){forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);continue;}
-    if(!result?.saved){failures++;if(result?.retryable||storageFailure(result?.error)){retrySave(item,result?.error);continue;}item.attempts=(item.attempts||0)+1;if(item.attempts>=3)fail(item,result?.error||'Save was not confirmed');continue;}
+    if(result?.discarded){forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);rows.delete(id);selected.delete(id);deletedIds.add(id);[...$('detectionQueue').children].find(n=>n.dataset.id===id)?.remove();discarded++;continue;}
+    if(!result?.saved){failures++;if(result?.retryable||databaseBusy(result?.error)||storageFailure(result?.error)){retrySave(item,result?.error);continue;}item.attempts=(item.attempts||0)+1;if(item.attempts>=3)fail(item,result?.error||'Save was not confirmed');continue;}
     forget(prefix+item.body.request_id);if(item.legacyKey)forget(item.legacyKey);pending.delete(id);dismissed.add(id);saved++;
     const row=rows.get(id);if(row){row.label=result.label;row.human_reviewed=true;const old=[...$('detectionQueue').children].find(n=>n.dataset.id===id);if(matches(row)){old?.replaceWith(card(row));}else{old?.remove();rows.delete(id);}}selected.delete(id);
    }
    progress();selection();if(rows.size<100&&!selected.size)void refresh();
-  }}finally{draining=false;selection();if(pending.size)progress();else if(saved)notice(saved+' object'+(saved===1?'':'s')+' reviewed');if(saved&&!pending.size&&!selected.size)await refresh();else if(!rows.size&&more)await load();}
+  }}finally{draining=false;selection();if(pending.size)progress();else if(saved||discarded)notice([saved?saved+' object'+(saved===1?'':'s')+' reviewed':'',discarded?discarded+' previously cleared detections removed':''].filter(Boolean).join(' · '));if(saved&&!pending.size&&!selected.size)await refresh();else if(!rows.size&&more)await load();}
  }
  for(const label of ['anomalous','not_anomalous']){const b=el('button',pretty(label));b.onclick=()=>{for(const id of [...selected])enqueue(rows.get(id),label,true);selection();drain();};$('bulkCategories').append(b);}
  new ResizeObserver(()=>document.documentElement.style.setProperty('--bulk-review-height',$('bulkReview').getBoundingClientRect().height+'px')).observe($('bulkReview'));
  $('selectAll').onclick=()=>{for(const id of rows.keys())if(!saving(id))selected.add(id);selection();};$('clearSelection').onclick=()=>{selected.clear();anchor=null;selection();};
  $('moreDetections').onclick=load;$('closeQueueFrame').onclick=()=>$('queueFrame').close();
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){selected.clear();selection();return;}if(e.defaultPrevented||e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||!selected.size||e.target.closest?.('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]),textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||document.querySelector('dialog[open],[aria-modal="true"]')||window.FIELD_PUBLIC_READ_ONLY===true)return;const index={a:0,n:1}[e.key.toLowerCase()];if(index===undefined)return;e.preventDefault();$('bulkCategories').children[index]?.click();});
- try{const keys=Array.from({length:localStorage.length},(_,i)=>localStorage.key(i));for(const k of keys){if(k?.startsWith(prefix)||k?.startsWith('field-station.pending-label.')){try{const item=JSON.parse(localStorage.getItem(k));if(!item.row?.id||!item.body?.request_id||item.row.kind==='video')continue;if(!k.startsWith(prefix))item.legacyKey=k;if(item.failed&&(storageFailure(item.error)||missingCropFailure(item.error)))retrySave(item,item.error,0);persist(item);pending.set(item.row.id,item);}catch{notice('A retained review could not be read. Other labels will still save.');}}}}catch{notice('Browser storage unavailable; keep this page open until saves are confirmed.');}
+ try{const keys=Array.from({length:localStorage.length},(_,i)=>localStorage.key(i));for(const k of keys){if(k?.startsWith(prefix)||k?.startsWith('field-station.pending-label.')){try{const item=JSON.parse(localStorage.getItem(k));if(!item.row?.id||!item.body?.request_id||item.row.kind==='video')continue;if(!k.startsWith(prefix))item.legacyKey=k;if(item.failed&&(databaseBusy(item.error)||storageFailure(item.error)||missingCropFailure(item.error)||item.saveRepairRevision!=='20261121-backlog-reconcile')){item.saveRepairRevision='20261121-backlog-reconcile';retrySave(item,item.error,0);}persist(item);pending.set(item.row.id,item);}catch{notice('A retained review could not be read. Other labels will still save.');}}}}catch{notice('Browser storage unavailable; keep this page open until saves are confirmed.');}
  window.fieldReviewHasPending=()=>pending.size>0;
- window.addEventListener('station-backlog-cleared',()=>{void reset();});
+ window.addEventListener('station-backlog-cleared',()=>{for(const item of pending.values())if(item.failed)retrySave(item,item.error,0);void reset();void drain();});
  window.addEventListener('online',drain);window.addEventListener('station-reconnected',e=>{token=e.detail.token;drain();});
  let renewingReviewLease=false;
  async function renewReviewLease(){

@@ -196,22 +196,34 @@ function rfPalette(){
  }catch{rfBright=false;}}
  return rfBright?{ink:'#111111'}:{ink:'#ffffff'};
 }
-function paintRFContext(ctx,range,plotWidth){
+function paintRFContext(ctx,range,plotWidth,plotHeight=80){
  const low=1590000000,high=1610000000,span=range[1]-range[0];
  if(span<=0||low<range[0]||high>range[1])return;
  const left=(low-range[0])/span*plotWidth,right=(high-range[0])/span*plotWidth,center=(left+right)/2;
  ctx.save();
  // Preserve the true 20 MHz width; a labeled callout makes the small band visible.
- ctx.fillStyle=rfBright?'rgba(17,17,17,.18)':'rgba(255,255,255,.3)';ctx.fillRect(left,35,right-left,80);
+ ctx.fillStyle=rfBright?'rgba(17,17,17,.18)':'rgba(255,255,255,.3)';ctx.fillRect(left,35,right-left,plotHeight);
  ctx.strokeStyle=rfPalette().ink;ctx.lineWidth=1;
- ctx.strokeRect(left,35,right-left,80);
+ ctx.strokeRect(left,35,right-left,plotHeight);
  const label='1590–1610 MHz',labelX=Math.max(0,Math.min(center+16,plotWidth-140));
  ctx.font='18px "IBM Plex Mono", monospace';ctx.fillStyle=ctx.strokeStyle;
  ctx.beginPath();ctx.moveTo(center,35);ctx.lineTo(center,27);ctx.lineTo(labelX-4,17);ctx.stroke();
  ctx.fillText(label,labelX,22);
  ctx.restore();
 }
-function paintRF(id,data){const palette=rfPalette();for(const id of ['rfOverlay','sessionLabel','sessionStatus'])$(id).style.color=palette.ink;$('rfOverlay').style.background='transparent';const canvas=$(id),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.font='20px "IBM Plex Mono", monospace';ctx.fillStyle=palette.ink;const range=data?.range_hz,values=data?.maximum_db||data?.average_db;const age=Math.max(0,rfNow()-(data?.timestamp||0)),fresh=age<5;if(!range||!Array.isArray(values)){ctx.fillText((id==='rfNarrow'?'Narrow band':'Wide band')+' · waiting for receiver',0,70);return false}ctx.fillText((range[0]/1e6).toFixed(0)+'–'+(range[1]/1e6).toFixed(0)+' MHz',0,22);ctx.textAlign='right';ctx.fillText('−40',w,22);ctx.fillText('−100 dB',w,h-8);ctx.textAlign='left';ctx.strokeStyle=palette.ink;ctx.lineWidth=2;for(const y of [35,75,115]){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}ctx.strokeStyle=palette.ink;ctx.lineWidth=2;ctx.beginPath();let pen=false;const plotWidth=w;for(let x=0;x<plotWidth;x++){const start=Math.floor(x*values.length/plotWidth),end=Math.max(start+1,Math.floor((x+1)*values.length/plotWidth));let peak=-Infinity;for(let i=start;i<end;i++){const v=values[i];if(typeof v==='number'&&Number.isFinite(v))peak=Math.max(peak,v)}if(!Number.isFinite(peak)){pen=false;continue}const y=115-Math.max(0,Math.min(1,(peak+100)/60))*80;if(pen)ctx.lineTo(x,y);else{ctx.moveTo(x,y);pen=true}}ctx.stroke();if(id==='rfWide')paintRFContext(ctx,range,plotWidth);if(!fresh){ctx.fillStyle=palette.ink;ctx.fillText('Last reading '+Math.floor(age)+'s ago · reconnecting',0,h-8)}return fresh}
+const rfDisplayScales=new Map();
+function rfDisplayScale(id,values,now,fresh=true){
+ let minimum=Infinity,maximum=-Infinity;
+ for(const value of values)if(typeof value==='number'&&Number.isFinite(value)){minimum=Math.min(minimum,value);maximum=Math.max(maximum,value);}
+ const previous=rfDisplayScales.get(id);
+ if(!Number.isFinite(minimum))return previous||{low:-100,high:-40};
+ if(previous&&!fresh)return previous;
+ const middle=(minimum+maximum)/2,span=Math.max(20,maximum-minimum+6),low=middle-span/2,high=middle+span/2;
+ const alpha=previous?1-Math.exp(-Math.max(0,now-previous.time)/8):1;
+ const scale={low:previous?Math.min(low,previous.low+(low-previous.low)*alpha):low,high:previous?Math.max(high,previous.high+(high-previous.high)*alpha):high,time:now};
+ rfDisplayScales.set(id,scale);return scale;
+}
+function paintRF(id,data){const palette=rfPalette();for(const id of ['rfOverlay','sessionLabel','sessionStatus'])$(id).style.color=palette.ink;$('rfOverlay').style.background='transparent';const canvas=$(id);if(canvas.closest('#liveTelemetry')){const target=Math.max(140,Math.round(canvas.clientHeight/Math.max(1,canvas.clientWidth)*canvas.width));if(canvas.height!==target)canvas.height=target;}const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,plotBottom=h-33,plotHeight=plotBottom-35;ctx.clearRect(0,0,w,h);ctx.font='20px "IBM Plex Mono", monospace';ctx.fillStyle=palette.ink;const range=data?.range_hz,values=data?.maximum_db||data?.average_db;const age=Math.max(0,rfNow()-(data?.timestamp||0)),fresh=age<5;if(!range||!Array.isArray(values)){ctx.fillText((id==='rfNarrow'?'Narrow band':'Wide band')+' · waiting for receiver',0,70);return false}ctx.fillText((range[0]/1e6).toFixed(0)+'–'+(range[1]/1e6).toFixed(0)+' MHz',0,22);ctx.textAlign='right';const displayed=[];for(let x=0;x<w;x++){let peak=-Infinity;for(let i=Math.floor(x*values.length/w);i<Math.max(Math.floor(x*values.length/w)+1,Math.floor((x+1)*values.length/w));i++)if(typeof values[i]==='number'&&Number.isFinite(values[i]))peak=Math.max(peak,values[i]);if(Number.isFinite(peak))displayed.push(peak);}const axis=rfDisplayScale(id,displayed,performance.now()/1000,fresh);ctx.fillText(axis.high.toFixed(1)+' dB',w,22);ctx.fillText(axis.low.toFixed(1)+' dB',w,h-8);ctx.textAlign='left';ctx.strokeStyle=palette.ink;ctx.lineWidth=2;for(const y of [35,(35+plotBottom)/2,plotBottom]){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}ctx.strokeStyle=palette.ink;ctx.lineWidth=2;ctx.beginPath();let pen=false;const plotWidth=w;for(let x=0;x<plotWidth;x++){const start=Math.floor(x*values.length/plotWidth),end=Math.max(start+1,Math.floor((x+1)*values.length/plotWidth));let peak=-Infinity;for(let i=start;i<end;i++){const v=values[i];if(typeof v==='number'&&Number.isFinite(v))peak=Math.max(peak,v)}if(!Number.isFinite(peak)){pen=false;continue}const y=plotBottom-Math.max(0,Math.min(1,(peak-axis.low)/(axis.high-axis.low)))*plotHeight;if(pen)ctx.lineTo(x,y);else{ctx.moveTo(x,y);pen=true}}ctx.stroke();if(id==='rfWide')paintRFContext(ctx,range,plotWidth,plotHeight);if(!fresh){ctx.fillStyle=palette.ink;ctx.fillText('Last reading '+Math.floor(age)+'s ago · reconnecting',0,h-8)}return fresh}
 async function pollRF(){if(mode!=='live'||rfPolling)return;rfPolling=true;try{const data=await api('/api/live/rf',undefined,window.FIELD_PUBLIC_READ_ONLY===true?45000:4000);if(Number.isInteger(data.local_hour))rfLocalHour=data.local_hour;if(Number.isFinite(data.server_epoch)){rfServerEpoch=data.server_epoch;rfServerReceived=performance.now()}for(const role of ['narrow','wide'])if(data.receivers?.[role])rfLast[role]=data.receivers[role];renderRF()}catch{renderRF(true)}finally{rfPolling=false}}
 setInterval(pollRF,1000);
 

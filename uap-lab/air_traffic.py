@@ -1,6 +1,10 @@
 """Private ADS-B context. No automatic visual identification or public redistribution."""
 import argparse, contextlib, fcntl, hashlib, json, math, os, sqlite3, time, uuid, zlib
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"shared"))
+from camera_optics import field_of_view
+from concurrent.futures import ThreadPoolExecutor
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import HTTPError
@@ -38,7 +42,23 @@ def fetch_json(url):
         if len(raw)>2*1024*1024:raise ValueError('Response too large')
         return json.loads(raw)
 
+def resolve_address(root,address):
+    directory=base(root)
+    if address.casefold() in ('stanford dish','the stanford dish',DEFAULT['address'].casefold()):
+        lat,lon=DEFAULT['latitude'],DEFAULT['longitude'];resolved=DEFAULT['address']
+    else:
+        # Submit-only geocoding: no autocomplete or keystroke requests.
+        gate=directory/'geocode-last.json';last=read(gate,{})
+        if time.time()-last.get('epoch',0)<2:raise ValueError('Please wait a moment before resolving another address.')
+        atomic(gate,{'epoch':time.time()})
+        results=fetch_json('https://nominatim.openstreetmap.org/search?'+urlencode(dict(q=address,format='jsonv2',limit=1)))
+        if not isinstance(results,list) or not results:raise ValueError('Address not found. Include the city and state.')
+        lat,lon=float(results[0]['lat']),float(results[0]['lon']);resolved=str(results[0]['display_name'])[:500]
+        if not -90<=lat<=90 or not -180<=lon<=180:raise ValueError('Invalid location result.')
+    return lat,lon,resolved
+
 def save_settings(root, value):
+    if value.get('action') in ('add_landmark','remove_landmark'):return update_landmark(root,value)
     address=value.get('address')
     if not isinstance(address,str) or not 3<=len(address.strip())<=250 or any(ord(c)<32 for c in address):
         raise ValueError('Enter an address or landmark.')
@@ -48,22 +68,47 @@ def save_settings(root, value):
         config=settings(root)
         radius=value.get('radius_miles',config['radius_nm']*1.150779448)
         if not number(radius) or not 1<=radius<=100:raise ValueError('Radar radius must be between 1 and 100 miles.')
+        azimuth=value.get('camera_azimuth_deg',config.get('camera_azimuth_deg'))
+        if azimuth is not None and (not number(azimuth) or not 0<=azimuth<360):raise ValueError('Camera azimuth must be 0–359.9° clockwise from true north, or blank.')
+        elevation=value.get('camera_elevation_deg',config.get('camera_elevation_deg'))
+        if elevation is not None and (not number(elevation) or not -90<=elevation<=90):raise ValueError('Camera elevation must be between −90° and 90°, or blank.')
+        focal=value.get('camera_focal_length_mm',config.get('camera_focal_length_mm',100))
+        if not number(focal) or not 100<=focal<=400:raise ValueError('Lens focal length must be between 100 and 400 mm.')
+        altitude=value.get('station_altitude_ft',config.get('station_altitude_ft'))
+        height=value.get('camera_height_ft',config.get('camera_height_ft',0))
+        if altitude is not None and (not number(altitude) or not -1500<=altitude<=30000):raise ValueError('Station ground altitude must be −1,500 to 30,000 feet above sea level, or blank for automatic.')
+        if not number(height) or not 0<=height<=2000:raise ValueError('Camera height must be 0–2,000 feet above ground.')
+        config['station_altitude_ft']=altitude
+        config['camera_height_ft']=height
+        config['camera_focal_length_mm']=focal
+        config['camera_elevation_deg']=elevation
+        config['camera_azimuth_deg']=azimuth
         config['radius_nm']=radius/1.150779448
         if address==config['address']:
             config['updated_epoch']=time.time();atomic(directory/'settings.json',config)
             return config
-        if address.casefold() in ('stanford dish','the stanford dish',DEFAULT['address'].casefold()):
-            lat,lon=DEFAULT['latitude'],DEFAULT['longitude'];resolved=DEFAULT['address']
-        else:
-            # Submit-only geocoding: no autocomplete or keystroke requests.
-            gate=directory/'geocode-last.json';last=read(gate,{})
-            if time.time()-last.get('epoch',0)<2:raise ValueError('Please wait a moment before resolving another address.')
-            atomic(gate,{'epoch':time.time()})
-            results=fetch_json('https://nominatim.openstreetmap.org/search?'+urlencode(dict(q=address,format='jsonv2',limit=1)))
-            if not isinstance(results,list) or not results:raise ValueError('Address not found. Include the city and state.')
-            lat,lon=float(results[0]['lat']),float(results[0]['lon']);resolved=str(results[0]['display_name'])[:500]
-            if not -90<=lat<=90 or not -180<=lon<=180:raise ValueError('Invalid location result.')
+        lat,lon,resolved=resolve_address(root,address)
         config.update(address=address,latitude=lat,longitude=lon,resolved_address=resolved,updated_epoch=time.time())
+        atomic(directory/'settings.json',config)
+        return config
+
+def update_landmark(root,value):
+    directory=base(root);directory.mkdir(parents=True,exist_ok=True)
+    with (directory/'settings.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        config=settings(root);items=list(config.get('landmarks',[]))
+        if value['action']=='remove_landmark':
+            items=[r for r in items if r['id']!=value.get('id')]
+        else:
+            address=value.get('address');label=value.get('label','')
+            if not isinstance(address,str) or not 3<=len(address.strip())<=250 or any(ord(c)<32 for c in address):raise ValueError('Enter a landmark address.')
+            if not isinstance(label,str) or len(label)>60 or any(ord(c)<32 for c in label):raise ValueError('Use a landmark name of up to 60 characters.')
+            address=address.strip();label=label.strip() or address.split(',')[0][:60]
+            if any(r['address'].casefold()==address.casefold() for r in items):raise ValueError('This landmark is already saved.')
+            if len(items)>=20:raise ValueError('You can save up to 20 landmarks.')
+            lat,lon,resolved=resolve_address(root,address)
+            items.append(dict(id=uuid.uuid4().hex,label=label,address=address,resolved_address=resolved,latitude=lat,longitude=lon))
+        config['landmarks']=items;config['updated_epoch']=time.time()
         atomic(directory/'settings.json',config)
         return config
 
@@ -106,6 +151,8 @@ def database(root, writable=False, namespace=""):
     return db
 
 def store(root, snapshot, namespace=""):
+    # Live rendering must not wait for the historical database.
+    atomic(base(root)/(namespace+'latest.json'),snapshot)
     data=zlib.compress(json.dumps(snapshot,separators=(',',':')).encode())
     with contextlib.closing(database(root,True,namespace)) as db,db:
         db.execute('INSERT OR REPLACE INTO snapshots VALUES(?,?,?)',(snapshot['sampled_epoch'],snapshot['center_id'],data))
@@ -116,13 +163,20 @@ def store(root, snapshot, namespace=""):
             for epoch,length in db.execute('SELECT epoch,length(body) FROM snapshots ORDER BY epoch').fetchall():
                 db.execute('DELETE FROM snapshots WHERE epoch=?',(epoch,));size-=length
                 if size<=60*1024**2:break
-    atomic(base(root)/(namespace+'latest.json'),snapshot)
 
 def live(root, now=None):
     now=time.time() if now is None else now
     result=read(base(root)/'latest.json',{'status':'unavailable','aircraft':[]})
     config=settings(root)
-    if result.get('center_id')!=center_id(config):return dict(status='waiting',aircraft=[],center=dict(address=config['address'],latitude=config['latitude'],longitude=config['longitude']),radius_nm=config['radius_nm'])
+    if result.get('center_id')!=center_id(config):return dict(status='waiting',aircraft=[],center=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude']),radius_nm=config['radius_nm'],landmarks=config.get('landmarks',[]),camera_azimuth_deg=config.get('camera_azimuth_deg'),camera_elevation_deg=config.get('camera_elevation_deg'),camera_fov=field_of_view(config),station_elevation=station_elevation(root,config))
+    result['center']=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude'])
+    from station_weather import live as current_weather
+    result['weather']=current_weather(root,config,now)
+    result['landmarks']=config.get('landmarks',[])
+    result['camera_azimuth_deg']=config.get('camera_azimuth_deg')
+    result['camera_elevation_deg']=config.get('camera_elevation_deg')
+    result['camera_fov']=field_of_view(config)
+    result['station_elevation']=station_elevation(root,config)
     result['age_seconds']=round(max(0,now-result.get('sampled_epoch',0)),1)
     if result['age_seconds']>MAX_AGE:result.update(status='stale',aircraft=[])
     else:result['aircraft']=[a for a in result.get('aircraft',[]) if 0<=now-a['position_epoch']<=MAX_AGE]
@@ -165,18 +219,92 @@ def detection(root, folder, event):
 def collect_once(root):
     config=settings(root)
     url=f"https://opendata.adsb.fi/api/v3/lat/{config['latitude']}/lon/{config['longitude']}/dist/{math.ceil(config['radius_nm'])}"
-    snapshot=normalize(fetch_json(url),config,time.time());store(root,snapshot)
+    snapshot=normalize(fetch_json(url),config,time.time())
+    try:
+        store(root,snapshot)
+        atomic(base(root)/'history-status.json',dict(status='stored',epoch=time.time()))
+    except sqlite3.Error as error:
+        atomic(base(root)/'history-status.json',dict(status='retrying',epoch=time.time(),error=str(error)))
     return snapshot
 
-def run(root):
-    root=Path(root).resolve()
-    if not str(root).startswith('/Volumes/') or not Path('/Volumes',root.parts[2]).is_mount():raise SystemExit('External field storage unavailable')
-    base(root).mkdir(parents=True,exist_ok=True)
-    with (base(root)/'collector.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        failures=0;private_next=0
+def region_key(config):
+    return hashlib.sha256(json.dumps([config['latitude'],config['longitude']]).encode()).hexdigest()[:16]
+
+def public_region(root):
+    value=read(base(root)/'radar-region.json',{})
+    if value.get('center_key')!=region_key(settings(root)) or value.get('status')!='known':return dict(status='unknown')
+    return {k:value[k] for k in ('status','county','state','country')}
+
+def refresh_region(root):
+    config=settings(root);key=region_key(config);path=base(root)/'radar-region.json';old=read(path,{})
+    if old.get('center_key')==key and (old.get('status')=='known' or time.time()<old.get('retry_after',0)):return
+    directory=base(root)
+    with (directory/'settings.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        gate=directory/'geocode-last.json'
+        if time.time()-read(gate,{}).get('epoch',0)<2:return
+        atomic(gate,dict(epoch=time.time()))
+        value=dict(status='unknown',center_key=key,retry_after=time.time()+3600)
+        try:
+            response=fetch_json('https://nominatim.openstreetmap.org/reverse?'+urlencode(dict(lat=config['latitude'],lon=config['longitude'],format='jsonv2',zoom=10,addressdetails=1)))
+            address=response.get('address',{});county=address.get('county');country=str(address.get('country_code','')).upper()
+            state=address.get('ISO3166-2-lvl4','').removeprefix(country+'-') or address.get('state')
+            if all(isinstance(v,str) and 0<len(v)<=120 and not any(ord(c)<32 for c in v) for v in (county,state,country)):
+                value.update(status='known',county=county,state=state,country=country)
+        except (OSError,ValueError,TypeError):pass
+        atomic(path,value)
+
+def station_elevation(root,config=None):
+    config=settings(root) if config is None else config
+    ground=config.get('station_altitude_ft');source='manual'
+    if not number(ground):
+        cached=read(base(root)/'terrain-elevation.json',{})
+        ground=cached.get('ground_altitude_ft') if cached.get('center_key')==region_key(config) else None
+        source=cached.get('source','USGS terrain')
+    height=config.get('camera_height_ft',0)
+    if not number(height):height=0
+    return dict(status='known' if number(ground) else 'unknown',source=source,
+                ground_altitude_ft=ground,camera_height_ft=height,
+                camera_altitude_ft=ground+height if number(ground) else None)
+
+def refresh_elevation(root,force=False):
+    config=settings(root)
+    if number(config.get('station_altitude_ft')):return
+    key=region_key(config);path=base(root)/'terrain-elevation.json';old=read(path,{})
+    if not force and old.get('center_key')==key and (number(old.get('ground_altitude_ft')) or time.time()<old.get('retry_after',0)):return
+    result=dict(center_key=key,status='unknown',retry_after=time.time()+3600)
+    try:
+        response=fetch_json('https://epqs.nationalmap.gov/v1/json?'+urlencode(dict(x=config['longitude'],y=config['latitude'],wkid=4326,units='Feet',includeDate='false')))
+        ground=float(response['value'])
+        if not math.isfinite(ground) or not -1500<=ground<=30000:raise ValueError('Elevation unavailable')
+        result.update(status='known',ground_altitude_ft=ground,source='USGS terrain',updated_epoch=time.time())
+    except (OSError,ValueError,TypeError,KeyError):
+        try:
+            response=fetch_json('https://api.open-meteo.com/v1/elevation?'+urlencode(dict(latitude=config['latitude'],longitude=config['longitude'])))
+            ground=float(response['elevation'][0])/0.3048
+            if not math.isfinite(ground) or not -1500<=ground<=30000:raise ValueError('Elevation unavailable')
+            result.update(status='known',ground_altitude_ft=ground,source='Copernicus / Open-Meteo',updated_epoch=time.time())
+        except (OSError,ValueError,TypeError,KeyError,IndexError):pass
+    atomic(path,result)
+
+def collect_auxiliary(root):
+    # Public-provider and geocoding latency must not delay private radar reports.
+    try:
+        from air_traffic_archive import collect_due
+        collect_due(root)
+        refresh_region(root)
+        refresh_elevation(root)
+        from station_weather import collect_due as collect_weather
+        collect_weather(root)
+    except Exception:
+        pass
+
+def poll(root):
+    failures=0;private_next=0;auxiliary=None
+    with ThreadPoolExecutor(max_workers=1,thread_name_prefix='air-context') as pool:
         while True:
-            if time.time()>=private_next:
+            started=time.monotonic()
+            if started>=private_next:
                 delay=POLL
                 try:
                     snap=collect_once(root);failures=0
@@ -188,13 +316,18 @@ def run(root):
                         if error.code==429:
                             with contextlib.suppress(ValueError):delay=max(delay,float(error.headers.get('Retry-After','60')))
                     atomic(base(root)/'collector-status.json',dict(status='retrying',epoch=time.time(),error=type(error).__name__,next_attempt=time.time()+delay))
-                private_next=time.time()+delay
-            try:
-                from air_traffic_archive import collect_due
-                collect_due(root)
-            except Exception:
-                pass  # A public provider failure cannot interrupt the private radar.
-            time.sleep(POLL)
+                    started=time.monotonic()  # Honor backoff after a failed request.
+                private_next=started+delay
+            if auxiliary is None or auxiliary.done():auxiliary=pool.submit(collect_auxiliary,root)
+            time.sleep(max(.1,min(POLL,private_next-time.monotonic())))
+
+def run(root):
+    root=Path(root).resolve()
+    if not str(root).startswith('/Volumes/') or not Path('/Volumes',root.parts[2]).is_mount():raise SystemExit('External field storage unavailable')
+    base(root).mkdir(parents=True,exist_ok=True)
+    with (base(root)/'collector.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        poll(root)
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--root',type=Path,required=True);args=parser.parse_args();run(args.root)

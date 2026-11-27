@@ -18,14 +18,14 @@ class LocationOverlayTests(unittest.TestCase):
     def test_county_label_bottom_left_and_unknown_hidden(self):
         overlay=LocationOverlay('/not-mounted')
         known=dict(status='known',county='San Mateo County',state='CA',country='US')
-        with patch('broadcast_location.location_at',return_value=known):
+        with patch('broadcast_location.public_region',return_value=known):
             canvas=Image.new('RGBA',(1280,720));overlay.draw(canvas,Image.new('RGB',(1280,720)))
         self.assertEqual(overlay.label,'San Mateo, CA, USA')
         left,top,right,bottom=canvas.getbbox()
         self.assertGreaterEqual(left,30);self.assertGreater(top,660)
         self.assertLess(right,400);self.assertLessEqual(bottom,694)
         overlay.checked=-float('inf')
-        with patch('broadcast_location.location_at',return_value=dict(status='unknown')):
+        with patch('broadcast_location.public_region',return_value=dict(status='unknown')):
             canvas=Image.new('RGBA',(1280,720));overlay.draw(canvas)
         self.assertIsNone(canvas.getbbox())
 

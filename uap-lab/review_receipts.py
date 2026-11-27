@@ -21,12 +21,26 @@ def confirmed(data,item):
             return dict(saved=True,id=key,label=label,request_id=request)
     return None
 
+def cleared(data,item):
+    """A user's explicit backlog deletion supersedes stale browser save requests."""
+    key=item.get('id','')
+    if not isinstance(key,str) or not re.fullmatch('[a-f0-9]{32}',key):return None
+    def read(path):
+        try:return json.loads(path.read_text())
+        except (OSError,ValueError):return {}
+    marker=read(Path(data).parent/'notifications/outbox'/key/'label-queue-dismissed.json')
+    if (marker.get('dismissed') is not True or marker.get('reason')!='User cleared labeling backlog'
+        or not re.fullmatch('[a-f0-9]{32}',str(marker.get('queue_clear_id','')))):return None
+    current=read(Path(data)/'email-reviews/examples'/key/'review.json')
+    if current.get('human_confirmed') and not current.get('deleted'):return None
+    return dict(saved=False,discarded=True,reason='backlog_cleared',id=key,request_id=item.get('request_id'),error='Detection deleted by your backlog clear; no label was saved.')
+
 def split(data,items,reset_before=0):
     done=[];remaining=[]
     for item in items:
         if reset_before and (not isinstance(item.get('queued_at'),(int,float)) or item['queued_at']<=reset_before):
             remaining.append(item);continue
-        result=confirmed(data,item)
+        result=confirmed(data,item) or cleared(data,item)
         if result is None:remaining.append(item)
         else:done.append(result)
     return done,remaining

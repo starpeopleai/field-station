@@ -4,9 +4,9 @@ from pathlib import Path
 from urllib.request import urlopen
 from PIL import Image,ImageDraw,ImageFont
 
-WIDTH=420
-HEIGHT=204
-RIGHT=30
+WIDTH=230
+HEIGHT=283
+LEFT=504
 BOTTOM=26
 OUTPUT_WIDTH=1280
 OUTPUT_HEIGHT=720
@@ -17,11 +17,23 @@ def finite(value):
 
 class SpectrumOverlay:
  def __init__(self):
-  self.bright=False;self.font=ImageFont.truetype(str(FONT),28);self.small=ImageFont.truetype(str(FONT),24)
+  self.scales={};self.bright=False;self.font=ImageFont.truetype(str(FONT),40);self.small=ImageFont.truetype(str(FONT),32)
+ def display_scale(self,role,values,now,fresh=True):
+  values=[v for v in values if finite(v)]
+  previous=self.scales.get(role)
+  if not values:return previous[:2] if previous else (-100,-40)
+  if previous and not fresh:return previous[:2]
+  minimum,maximum=min(values),max(values);middle=(minimum+maximum)/2;span=max(20,maximum-minimum+6)
+  low,high=middle-span/2,middle+span/2
+  if previous:
+   alpha=1-math.exp(-max(0,now-previous[2])/8)
+   low=min(low,previous[0]+(low-previous[0])*alpha);high=max(high,previous[1]+(high-previous[1])*alpha)
+  self.scales[role]=(low,high,now)
+  return low,high
  def palette(self,frame):
   if frame is not None:
    w,h=frame.size
-   box=(int(w*(1280-RIGHT-WIDTH)/1280),int(h*(720-BOTTOM-HEIGHT)/720),int(w*(1280-RIGHT)/1280),int(h*(720-BOTTOM)/720))
+   box=(int(w*LEFT/1280),int(h*(OUTPUT_HEIGHT-BOTTOM-HEIGHT)/OUTPUT_HEIGHT),int(w*1250/1280),int(h*(OUTPUT_HEIGHT-BOTTOM)/OUTPUT_HEIGHT))
    pixels=list(frame.convert('RGB').crop(box).resize((32,16)).getdata())
    light=sum(.2126*r+.7152*g+.0722*b for r,g,b in pixels)/(255*len(pixels))
    if light>.65:self.bright=True
@@ -30,48 +42,57 @@ class SpectrumOverlay:
  def render(self,data,frame=None,now=None,standby=False):
   now=time.time() if now is None else now;ink=(155,201,140,255) if standby else self.palette(frame)
   data=data if isinstance(data,dict) else {};receivers=data.get('receivers',{}) or {}
-  image=Image.new('RGBA',(840,408));draw=ImageDraw.Draw(image)
+  image=Image.new('RGBA',(840,1033));draw=ImageDraw.Draw(image)
   def text(x,y,value,font=None,right=False):draw.text((x,y),value,font=font or self.small,fill=ink,anchor='rt' if right else 'lt')
   fresh=[]
   for index,role in enumerate(('narrow','wide')):
-   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=48+index*178
+   row=receivers.get(role) or {};span=row.get('range_hz');values=row.get('maximum_db') or row.get('average_db');top=148+index*442
    valid=isinstance(span,(list,tuple)) and len(span)==2 and all(finite(x) for x in span) and span[1]>span[0] and isinstance(values,list) and bool(values)
    timestamp=row.get('timestamp');age=max(0,now-timestamp) if finite(timestamp) else None
    current=valid and age is not None and age<5;fresh.append(current)
    if not valid:
     text(0,top+55,('Narrow band' if index==0 else 'Wide band')+' · waiting for receiver');continue
-   text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,'−40 dB',right=True)
-   for y in (42,86,130):draw.line((0,top+y,839,top+y),fill=ink,width=2)
+   displayed=[]
+   for x in range(840):
+    start=int(x*len(values)/840);end=max(start+1,int((x+1)*len(values)/840));bins=[v for v in values[start:end] if finite(v)]
+    if bins:displayed.append(max(bins))
+   low,high=self.display_scale(role,displayed,now,current)
+   text(0,top+2,f'{span[0]/1e6:.0f}–{span[1]/1e6:.0f} MHz');text(840,top+2,f'{high:.1f} dB',right=True)
+   for y in (42,209,377):draw.line((0,top+y,839,top+y),fill=ink,width=2)
    points=[]
    for x in range(840):
     start=int(x*len(values)/840);end=max(start+1,int((x+1)*len(values)/840));bins=[v for v in values[start:end] if finite(v)]
     if not bins:
      if len(points)>1:draw.line(points,fill=ink,width=2)
      points=[];continue
-    peak=max(bins);points.append((x,top+130-max(0,min(1,(peak+100)/60))*88))
+    peak=max(bins);points.append((x,top+377-max(0,min(1,(peak-low)/(high-low)))*335))
    if len(points)>1:draw.line(points,fill=ink,width=2)
-   text(840,top+144,'−100 dB',right=True)
+   text(840,top+403,f'{low:.1f} dB',right=True)
    if role=='wide' and span[0]<=1590e6<1610e6<=span[1]:
     left=(1590e6-span[0])/(span[1]-span[0])*840;right=(1610e6-span[0])/(span[1]-span[0])*840;center=(left+right)/2;label_x=max(0,min(center+20,580))
-    draw.rectangle((left,top+42,right,top+130),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
+    draw.rectangle((left,top+42,right,top+377),fill=(*ink[:3],46 if self.bright else 77),outline=ink,width=1)
     draw.line([(center,top+42),(center,top+32),(label_x-4,top+22)],fill=ink,width=1);text(label_x,top+2,'1590–1610 MHz')
-   if not current:text(0,top+144,('Last reading '+str(int(age))+'s ago' if age is not None else 'No timestamp')+' · reconnecting')
+   if not current:text(0,top+403,('Last reading '+str(int(age))+'s ago' if age is not None else 'No timestamp')+' · reconnecting')
   text(0,0,'RF spectrum',self.font)
-  text(840,2,'Both receivers live' if all(fresh) else 'One receiver reconnecting' if any(fresh) else 'Waiting for receivers',right=True)
+  text(0,50,'Both receivers live' if all(fresh) else 'One receiver reconnecting' if any(fresh) else 'Waiting for receivers')
   return image.resize((WIDTH,HEIGHT),Image.Resampling.LANCZOS)
 
 class OverlayPipe:
  def __init__(self,rf_path,preview_url=None,camera=None,tags_url='http://127.0.0.1:8091/api/live/status'):
+  from broadcast_air_traffic import AircraftOverlay
   from broadcast_tags import TagOverlay
   from broadcast_watermark import Watermark
   self.tags_url=tags_url;self.tags={};self.tag_renderer=TagOverlay();self.watermark=Watermark()
+  self.aircraft=AircraftOverlay(Path(rf_path).parent.parent)
   self.camera=camera;self.rf_path=Path(rf_path);self.preview_url=preview_url;self.stop=threading.Event();self.renderer=SpectrumOverlay();self.frame=self.compose(self.renderer.render({}),True).tobytes();self.reader,self.writer=os.pipe()
  def compose(self,rf,standby=False,frame=None):
   canvas=Image.new('RGBA',(OUTPUT_WIDTH,OUTPUT_HEIGHT))
   self.watermark.draw(canvas,frame,standby,location_ink=(155,201,140,255) if standby else ((17,17,17,255) if self.renderer.bright else (255,255,255,255)))
+  self.aircraft.draw(canvas,(155,201,140,255) if standby else ((17,17,17,255) if self.renderer.bright else (255,255,255,255)))
   self.tag_renderer.draw(canvas,self.tags,time.time(),standby)
-  if standby:ImageDraw.Draw(canvas).rectangle((OUTPUT_WIDTH-RIGHT-WIDTH-10,OUTPUT_HEIGHT-BOTTOM-HEIGHT-10,OUTPUT_WIDTH-RIGHT+10,OUTPUT_HEIGHT-BOTTOM+10),fill=(8,19,13,242),outline=(155,201,140,255),width=1)
-  canvas.alpha_composite(rf,(OUTPUT_WIDTH-RIGHT-WIDTH,OUTPUT_HEIGHT-BOTTOM-HEIGHT))
+  if standby:ImageDraw.Draw(canvas).rectangle((LEFT-10,OUTPUT_HEIGHT-BOTTOM-HEIGHT-10,LEFT+WIDTH+10,OUTPUT_HEIGHT-BOTTOM+10),fill=(8,19,13,242),outline=(155,201,140,255),width=1)
+  canvas.alpha_composite(rf,(LEFT,OUTPUT_HEIGHT-BOTTOM-HEIGHT))
+  ink=(155,201,140,255) if standby else ((17,17,17,255) if self.renderer.bright else (255,255,255,255))
   return canvas
  def poll_tags(self):
   while not self.stop.is_set():
