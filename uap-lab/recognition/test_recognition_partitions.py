@@ -28,4 +28,22 @@ class PartitionTests(unittest.TestCase):
             with closing(History(path)) as history:self.assertEqual(len(list(history.execute('SELECT sequence,model,observations FROM frames WHERE generation=? ORDER BY sequence',('run',)))),1)
             store.close();store=RecognitionStore(path)
             self.assertEqual(store.db.execute('SELECT count(*) FROM frames').fetchone()[0],0);self.assertEqual(store.load()[0]['last_sequence'],0);store.close()
+    def test_rollover_does_not_copy_free_pages(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'results.sqlite';store=RecognitionStore(path)
+            store.db.execute('PRAGMA auto_vacuum=NONE');store.db.execute('VACUUM')
+            store.db.execute('CREATE TABLE discarded(payload BLOB)')
+            store.db.execute('INSERT INTO discarded VALUES(zeroblob(8388608))');store.db.commit()
+            store.db.execute('DELETE FROM discarded');store.db.commit()
+            self.assertGreater(store.db.execute('PRAGMA freelist_count').fetchone()[0],1000)
+            store.partition_bytes=1
+            store.add('run',dict(sequence=1,pts_seconds=1,received_epoch=1,observations=[{'label':'anomalous'}]),'model')
+            store.commit(dict(last_sequence=1),None)
+            archive=next((path.parent/'partitions').glob('*.sqlite'))
+            self.assertLess(archive.stat().st_size,1024*1024)
+            with closing(sqlite3.connect(archive)) as db:
+                self.assertEqual(db.execute('PRAGMA freelist_count').fetchone(),(0,))
+                self.assertEqual(db.execute('SELECT count(*) FROM frames').fetchone(),(1,))
+                self.assertEqual(db.execute('PRAGMA quick_check').fetchone(),('ok',))
+            store.close()
 if __name__=='__main__':unittest.main()

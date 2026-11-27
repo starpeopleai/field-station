@@ -1,7 +1,7 @@
-"""Versioned, shared proposal-stage controls; separate from model decisions."""
+"""Current proposal-stage settings shared by all models."""
 import copy,fcntl,math,time
 from pathlib import Path
-from model_settings import read,save
+from model_settings import read,save,settings_key
 
 def field(group,label,value,minimum,maximum,step=1,odd=False):
  return dict(group=group,label=label,default=value,min=minimum,max=maximum,step=step,integer=step==1,odd=odd)
@@ -49,18 +49,19 @@ def snapshot(data):
  except FileNotFoundError:return dict(revision=0,values=dict(DEFAULTS))
  cached=_CACHE.get(str(path))
  if cached is None or cached[0]!=identity:
-  doc=read(path,{});doc['values']={**DEFAULTS,**validate(doc.get('values',{}))};_CACHE[str(path)]=(identity,doc)
+  doc=read(path,{});values={**DEFAULTS,**validate(doc.get('values',{}))}
+  key=doc['revision'] if 'revision' in doc else settings_key({k:v for k,v in values.items() if v!=DEFAULTS[k]})
+  _CACHE[str(path)]=(identity,dict(values=values,revision=key))
  return copy.deepcopy(_CACHE[str(path)][1])
 def state(data):
- doc=snapshot(data);return dict(revision=doc['revision'],values=doc['values'],schema=SCHEMA)
+ doc=snapshot(data);return dict(values=doc['values'],schema=SCHEMA)
 def update(data,value):
- if not isinstance(value,dict) or set(value)-{'revision','values','reset'}:raise ValueError('Invalid detection settings request')
+ if not isinstance(value,dict) or set(value)-{'revision','expected','values','reset'}:raise ValueError('Invalid detection settings request')
  root=Path(data);root.mkdir(parents=True,exist_ok=True)
  with (root/'detection-settings.lock').open('a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX);old=snapshot(root)
-  if type(value.get('revision')) is not int or value['revision']!=old['revision']:raise ValueError('Detection settings changed. Refresh before saving.')
+  if ('revision' in value and value['revision']!=old['revision']) or value.get('expected',old['values'])!=old['values']:raise ValueError('Detection settings changed. Refresh before saving.')
   values=dict(DEFAULTS) if value.get('reset') is True else {**old['values'],**validate(value.get('values'))}
-  entry=dict(revision=old['revision']+1,values=values,epoch=time.time())
-  entry['history']=[*old.get('history',[]),dict(revision=old['revision'],values=old['values'],epoch=old.get('epoch'))][-100:]
-  save(root/'detection-settings.json',entry)
+  if values!=old['values']:
+   save(root/'detection-settings.json',dict(values=values,epoch=time.time()))
  return dict(saved=True,**state(root))

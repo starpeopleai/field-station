@@ -1,6 +1,6 @@
 'use strict';
 (()=>{
- const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only'};
+ const names={human:'Stable',experimental:'Experimental',hybrid:'Hybrid',machine:'Machine-only',rotation:'Human-curated (rotation)'};
  const ns='http://www.w3.org/2000/svg';let last=[],signature='';
  const svg=(tag,attrs,text)=>{const el=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;return el};
  function render(points){
@@ -19,7 +19,7 @@
   const hide=()=>{tip.hidden=true;chart.querySelectorAll('.score-line').forEach(line=>line.style.opacity='')};chart.onpointerleave=hide;
   function show(row,lane,clientX,clientY){
    tip.replaceChildren();const title=document.createElement('strong');title.textContent=names[lane];tip.append(title);
-   for(const value of [scoreFor(row,lane).toFixed(1)+' / 100',new Date(row.time).toLocaleString(),'Model '+(row[lane+'_version']||'').slice(0,12)+' · v'+(row.settings_revisions?.[lane]??0)]){const line=document.createElement('div');line.textContent=value;tip.append(line)}
+   for(const value of [scoreFor(row,lane).toFixed(1)+' / 100',new Date(row.time).toLocaleString(),'Model '+(row[lane+'_version']||'').slice(0,12)]){const line=document.createElement('div');line.textContent=value;tip.append(line)}
    chart.querySelectorAll('.score-line').forEach(line=>line.style.opacity=line.classList.contains(lane)?'1':'.25');
    tip.hidden=false;tip.style.left=Math.max(12,Math.min(innerWidth-tip.offsetWidth-12,clientX+12))+'px';tip.style.top=Math.max(12,Math.min(innerHeight-tip.offsetHeight-12,clientY-tip.offsetHeight-12))+'px'
   }

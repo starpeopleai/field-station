@@ -51,6 +51,14 @@ def export(root,app,public):
   if mod.JSON_ROUTES[route] or route in ('/api/labeled-frames/token',):continue
   try:files['responses/'+route[5:].replace('/','-')+'.json']=json.dumps(clean(json.loads(get(route))),allow_nan=False,separators=(',',':')).encode()
   except Exception:failures.append(route)
+ # Publish only boolean control states, never private transmitter/operator setup.
+ controls={}
+ for route,key,source_key in [('/api/settings','live_streaming','live_streaming'),('/api/ce5','ce5_playing','playing')]:
+  try:
+   state=json.loads(get(route,8091));value=state.get(source_key)
+   if isinstance(value,bool):controls[key]=value
+  except Exception:pass
+ files['camera-controls.json']=json.dumps(controls).encode()
  os.environ['UAP_LAB_DATA']=str(root);os.environ['CAPTURE_STATION_ROOT']=str(root.parent);os.environ['XDG_RUNTIME_DIR']=str(root.parent/'station-runtime');sys.path.insert(0,str(app));import lab,detection_library
  lab.DATA=root;lab.STATION=root.parent
  src=Path(detection_library.__file__).read_text();needle="if row['kind'] in ('detection','review')"

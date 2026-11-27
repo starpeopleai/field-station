@@ -223,6 +223,8 @@ def render_stills(folder,raw,annotations,width,height,revision):
      entry[kind]=dict(file=name+'/'+filename,sha256=hashlib.sha256((work/filename).read_bytes()).hexdigest())
     entries.append(entry)
   if len(entries)!=len(grouped):raise ValueError('Not every reviewed frame exists in original video')
+  from motion_preview import write_preview
+  write_preview(folder,raw,entries,work,name,lab.read(folder/'video-trim.json',{}))
   # Revision-specific files are committed before the index makes them publishable.
   destination.mkdir(exist_ok=True)
   for path in work.iterdir():path.replace(destination/path.name)
@@ -237,9 +239,9 @@ def stills_ready(folder,revision):
  index=lab.read(folder/'frames/reviewed-index.json',{})
  if index.get('review_revision')!=revision or not index.get('frames'):return False
  for row in index['frames']:
-  for kind in ('original','annotated'):
+  for kind in ('original','annotated',*(['motion'] if 'motion' in row else [])):
    item=row.get(kind,{});name=item.get('file','')
-   if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-(original|annotated)\.png',name):return False
+   if not re.fullmatch(r'reviewed-[a-f0-9]{64}/frame-[0-9]{9}-(?:(?:original|annotated)\.png|motion\.gif)',name):return False
    path=folder/'frames'/name
    if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(folder.resolve()):return False
  return True

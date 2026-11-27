@@ -11,6 +11,7 @@ def publish(root,folder,repository='starpeopleai/anomaly-vision-model'):
   with tempfile.TemporaryDirectory(dir=artifact) as temporary:
    payload=Path(temporary);shutil.copytree(folder/'candidate.mlpackage',payload/'candidate.mlpackage');shutil.copyfile(folder/'candidate-weights.pt',payload/'candidate-weights.pt')
    keys=('version','classes','thresholds','minimum_native_size','input_color_space','decision_rule','preprocessing','night_context_confirmation')
+   if lane=='human_experimental':keys+=('classification_input_scope','training_recipe','architecture')
    save(payload/'candidate-policy.json',{k:policy[k] for k in keys if k in policy})
    dataset=json.loads((folder/'dataset.json').read_text());save(payload/'model-card.json',dict(version=version,role=lane+'-shadow-only',live=False,human_training_counts=dataset.get('human_training_counts',{}),pseudo_labels=dataset.get('pseudo_labels',0),human_baseline_version=dataset.get('human_baseline_version'),qualification='Experimental; prospective human-reviewed comparison required before live use. Training images are not included.'))
    with tarfile.open(artifact/'model.tar.gz','w:gz') as tar:

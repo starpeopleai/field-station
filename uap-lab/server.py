@@ -15,7 +15,7 @@ class StationHTTPServer(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     def json(self,value,status=200):
         data=json.dumps(value).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(data)
-    def file(self,path,mime=None):
+    def file(self,path,mime=None,download_name=None):
         if not path.is_file():self.send_error(404);return
         size=path.stat().st_size;start,end=0,size-1;partial=False
         value=self.headers.get('Range')
@@ -28,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(416);self.send_header('Content-Range',f'bytes */{size}');self.send_header('Content-Length','0');self.end_headers();return
             partial=True
         self.send_response(206 if partial else 200);self.send_header('Content-Type',mime or mimetypes.guess_type(path.name)[0] or 'application/octet-stream');self.send_header('Accept-Ranges','bytes');self.send_header('Content-Length',str(end-start+1));self.send_header('X-Content-Type-Options','nosniff')
+        if download_name:
+            self.send_header('Content-Disposition',f'attachment; filename="{download_name}"')
         if partial:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
         self.end_headers()
         with path.open('rb') as f:
@@ -65,6 +67,34 @@ class Handler(BaseHTTPRequestHandler):
                     r=lab.read(path,{})
                     if r.get('state')=='deployed' and r.get('health_verified'):releases[r['version']]=r.get('deployed_epoch')
                 self.json(dict(history,releases=releases));return
+            if p in ('/api/email-review/formation','/api/email-review/formation/tracks','/api/email-review/formation/video'):
+                import formation_overlay as overlay
+                key=q['id'][0]
+                result=overlay.status(lab.DATA,key)
+                if p.endswith('/video') and q.get('download')==['1']:
+                    base=overlay.folder(lab.DATA,key)
+                    revision=q.get('revision',[result.get('revision','')])[0]
+                    if not re.fullmatch('[a-f0-9]{32}',revision):
+                        self.send_error(404);return
+                    job=base/revision
+                    variant=q.get('variant',['measured'])[0]
+                    names={'measured':'formation-overlay','predicted':'formation-predicted'}
+                    if variant not in names or overlay.read(job/'status.json').get('state')!='ready':
+                        self.send_error(404);return
+                    name=names[variant]
+                    self.file(job/(name+'.mp4'),'video/mp4',download_name=f'{key}-{name}.mp4');return
+                if p.endswith(('/tracks','/video')):
+                    if result.get('state')!='ready':raise ValueError('Overlay is still preparing')
+                    job=overlay.folder(lab.DATA,key)/result['revision']
+                    if p.endswith('/tracks'):
+                        tracks=overlay.read(job/'tracks.json')
+                        if q.get('predict')==['1']:
+                            from formation_prediction import predict
+                            tracks['predictions']=predict(tracks['tracks'])
+                        self.json(tracks)
+                    else:self.file(job/'formation-overlay.mp4','video/mp4')
+                else:self.json(result)
+                return
             if p=='/api/email-review/tags':
                 from video_tags import status
                 self.json(status(lab.DATA,q.get('id',[''])[0]));return
@@ -97,9 +127,14 @@ class Handler(BaseHTTPRequestHandler):
             if p=='/api/objects':
                 from detection_library import listing
                 from object_model_scores import decorate
-                value=listing(lab.DATA,q.get('view',['all'])[0],q.get('before',[''])[0],q.get('limit',['100'])[0],classification=q.get('classification',[None])[0],review_status=q.get('review_status',[None])[0])
+                value=listing(lab.DATA,q.get('view',['all'])[0],q.get('before',[''])[0],q.get('limit',['100'])[0],classification=q.get('classification',[None])[0],review_status=q.get('review_status',[None])[0],captured_from=q.get('captured_from',[None])[0],captured_to=q.get('captured_to',[None])[0])
                 from label_queue import lease_videos
                 lease_videos(lab.DATA,[r['id'] for r in value.get('items',[]) if r.get('kind')=='detection'])
+                if q.get('captured_from') or q.get('captured_to'):
+                    from capture_time_filter import bounds,matching_clips
+                    from sustained_motion import clips_in_range
+                    limits=bounds(q.get('captured_from',[None])[0],q.get('captured_to',[None])[0])
+                    value['capture_clips']=clips_in_range(lab.DATA,lab.STATION,*limits)+matching_clips(lab.DATA,*limits)
                 self.json(decorate(lab.DATA,value));return
             if p in ('/tracks','/labels'):
                 self.send_response(302);self.send_header('Location','/label-videos');self.send_header('Content-Length','0');self.end_headers();return
@@ -120,29 +155,68 @@ class Handler(BaseHTTPRequestHandler):
             if p=='/api/system-temperature':
                 from system_temperature import status
                 self.json(status());return
+            if p in ('/api/air-traffic','/api/air-traffic/settings','/api/air-traffic/detection'):
+                if self.headers.get('X-Lab-Token')!=TOKEN:self.json(dict(error='Private station access required'),403);return
+                import air_traffic
+                if p.endswith('/settings'):result=air_traffic.settings(lab.DATA.parent)
+                elif p.endswith('/detection'):
+                    from email_review import folder_for
+                    folder=folder_for(lab.DATA,q['id'][0]);event=lab.read(folder/'event.json',{})
+                    result=air_traffic.detection(lab.DATA.parent,folder,event)
+                else:result=air_traffic.live(lab.DATA.parent)
+                self.json(result);return
             if p=='/api/service-health':self.json(dict(ready=True,instance=INSTANCE));return
             if p=='/training':
                 data=(lab.DATA/'provisional-training/report.html').read_text()+'<link rel="stylesheet" href="/app-shell.css?v=3"><script src="/app-shell.js?v=5" defer></script>'
                 data=data.encode();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
             if p=='/api/training-history':self.json(lab.read(lab.DATA/'provisional-training/history.json',{}));return
             if p=='/api/email-review':
+                from sustained_motion import playback_url
                 from email_review import detail,prepare
                 key=q['id'][0];info=detail(lab.DATA,key)
+                info['continuous_video_url']=playback_url(lab.DATA,lab.STATION,info['event'])
+                from starred_trim import context_editor
+                info['continuous_trim_url']=context_editor(lab.DATA,key)
+                asset=q.get('asset',[''])[0]
+                if asset:
+                    from starred_trim import binding
+                    from review_playback import frame_times
+                    source=binding(lab.DATA,key,asset)
+                    if source is None:raise ValueError('Recording unavailable')
+                    times=sorted(frame_times(source))
+                    if not times:raise ValueError('Recording has no video frames')
+                    info['clip']=dict(state='ready',frame_times=times,event_time=times[0])
+                    info['annotations']=[]
+                from detection_actions import stars
+                prefix='review:'+key+':'
+                info['starred_samples']=[k[len(prefix):] for k in stars(lab.DATA) if k.startswith(prefix)]
                 if info['clip']['state']=='preparing':
                     def build():
                         try:prepare(lab.DATA,key)
                         except Exception:pass
                     threading.Thread(target=build,daemon=True).start()
                 self.json(dict(info,token=TOKEN));return
+            if p=='/trim-recording':
+                self.send_response(302);self.send_header('Location','/review-detection?'+url.query);self.end_headers();return
+            if p=='/api/email-review/trim/source':
+                from starred_trim import binding
+                source=binding(lab.DATA,q['id'][0],q['asset'][0])
+                if source is None:raise ValueError('Recording unavailable')
+                self.file(source,'video/mp4');return
             if p=='/api/email-review/trim/video':
                 from video_trim import download
-                target=download(lab.DATA,q['id'][0])
+                from starred_trim import binding,output
+                key=q['id'][0]
+                asset=q.get('asset',['review.mp4'])[0]
+                target=output(lab.DATA,key,asset) if binding(lab.DATA,key,asset) else download(lab.DATA,key)
                 if isinstance(target,str):
                     self.send_response(302);self.send_header('Location',target);self.end_headers();return
                 self.file(target,'video/mp4');return
             if p=='/api/email-review/trim':
                 from video_trim import status
-                self.json(status(lab.DATA,q['id'][0]));return
+                from starred_trim import binding,status as starred_status
+                key=q['id'][0];asset=q.get('asset',['review.mp4'])[0]
+                self.json(starred_status(lab.DATA,key,asset) if binding(lab.DATA,key,asset) else status(lab.DATA,key));return
             if p=='/api/email-review/video':
                 from email_review import folder_for
                 from review_playback import playback_path
@@ -225,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
                     content=('<!doctype html><meta name="viewport" content="width=device-width"><title>Lab output files</title><style>body{background:#10191e;color:#e8eef0;font:17px system-ui;padding:24px}a{color:#92ded0}li{margin:12px}</style><h1>Output files</h1><ul>'+''.join('<li><a href="'+base+quote(v.name)+('/' if v.is_dir() else '')+'">'+html.escape(v.name)+('/' if v.is_dir() else '')+'</a></li>' for v in files)+'</ul>').encode()
                     self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(content)));self.end_headers();self.wfile.write(content);return
                 self.file(path);return
-            names={'/model-inspector.css':'model-inspector.css','/model-inspector.js':'model-inspector.js','/model-score-history.js':'model-score-history.js','/starpeople-mark.png':'starpeople-mark.png','/favicon.png':'favicon.png','/rf-experiment.js':'rf-experiment.js','/rf-experiment.css':'rf-experiment.css','/review-filters.js':'review-filters.js','/review-filters.css':'review-filters.css','/ce5.js':'ce5.js','/models':'models.html','/models.js':'models.js','/models.css':'models.css','/models-data.js':'models-data.js','/test-model':'model-tests.html','/model-tests.js':'model-tests.js','/ufo-engraving.png':'ufo-engraving.png','/metrics':'observation-metrics.html','/observation-metrics.js':'observation-metrics.js','/observation-metrics.css':'observation-metrics.css','/metrics.js':'metrics.js','/label-videos':'label-videos.html','/detections.js':'detections.js','/label-videos.js':'label-videos.js','/app-shell.js':'app-shell.js','/app-shell.css':'app-shell.css','/email-review':'email-review.html','/email-review.js':'email-review.js','/labels':'labels.html','/labels.js':'labels.js','/':'index.html','/events':'events.html','/events.js':'events.js','/tracks':'tracks.html','/tracks.js':'tracks.js','/app.js':'app.js','/style.css':'style.css'}
+            names={'/formation-overlay.js':'formation-overlay.js','/air-traffic.js':'air-traffic.js','/air-traffic.css':'air-traffic.css','/model-inspector.css':'model-inspector.css','/model-inspector.js':'model-inspector.js','/model-score-history.js':'model-score-history.js','/starpeople-mark.png':'starpeople-mark.png','/favicon.png':'favicon.png','/rf-experiment.js':'rf-experiment.js','/rf-experiment.css':'rf-experiment.css','/review-filters.js':'review-filters.js','/review-filters.css':'review-filters.css','/ce5.js':'ce5.js','/models':'models.html','/models.js':'models.js','/models.css':'models.css','/models-data.js':'models-data.js','/test-model':'model-tests.html','/model-tests.js':'model-tests.js','/ufo-engraving.png':'ufo-engraving.png','/metrics':'observation-metrics.html','/observation-metrics.js':'observation-metrics.js','/observation-metrics.css':'observation-metrics.css','/metrics.js':'metrics.js','/label-videos':'label-videos.html','/detections.js':'detections.js','/label-videos.js':'label-videos.js','/app-shell.js':'app-shell.js','/app-shell.css':'app-shell.css','/email-review':'email-review.html','/email-review.js':'email-review.js','/labels':'labels.html','/labels.js':'labels.js','/':'index.html','/events':'events.html','/events.js':'events.js','/tracks':'tracks.html','/tracks.js':'tracks.js','/app.js':'app.js','/style.css':'style.css'}
             names.update({name:name.lstrip('/') for name in ['/fonts/IBMPlexMono-Regular.woff2', '/fonts/IBMPlexMono-SemiBold.woff2', '/fonts/IBMPlexMono-Bold.woff2']})
             if p in names:self.file(lab.ROOT/'static'/names[p]);return
             self.send_error(404)
@@ -237,6 +311,15 @@ class Handler(BaseHTTPRequestHandler):
             origin=self.headers.get('Origin')
             if self.headers.get('X-Lab-Token')!=TOKEN or (origin and urlsplit(origin).netloc!=self.headers.get('Host')):self.json(dict(error='Reload this page to reconnect securely.'),403);return
             p=urlsplit(self.path);length=int(self.headers.get('Content-Length','0'))
+            if p.path=='/api/model-activate':
+                if not 0<length<=4096:raise ValueError('Invalid model activation request')
+                from model_activation import request
+                self.json(request(lab.DATA,json.loads(self.rfile.read(length))),202);return
+            if p.path=='/api/air-traffic/settings':
+                if not 0<length<=2048:raise ValueError('Invalid settings request')
+                import air_traffic
+                self.json(air_traffic.save_settings(lab.DATA.parent,json.loads(self.rfile.read(length))));return
+
             if p.path in ('/api/model-settings','/api/detection-settings','/api/detection-preview','/api/model-decision-preview','/api/model-decision-preview/review'):
                 if length>1024*1024:raise ValueError('Request too large')
                 value=json.loads(self.rfile.read(length))
@@ -303,6 +386,9 @@ class Handler(BaseHTTPRequestHandler):
                 from rf_transmit import controller
                 if value.get('action','preview')!='preview':raise ValueError('Use the explicitly armed transmit control.')
                 self.json(controller(lab.DATA.parent).preview(value));return
+            if p.path=='/api/email-review/formation':
+                from formation_overlay import submit
+                self.json(submit(lab.DATA,value));return
             if p.path=='/api/email-review/tags':
                 from video_tags import save
                 self.json(save(lab.DATA,value));return
@@ -311,7 +397,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(player(lab.DATA.parent).set(value.get('enabled')));return
             if p.path=='/api/email-review/trim':
                 from video_trim import save
-                self.json(save(lab.DATA,value));return
+                from starred_trim import binding,save as save_starred
+                key=value.get('id','');asset=value.get('asset','review.mp4')
+                self.json(save_starred(lab.DATA,key,asset,value) if binding(lab.DATA,key,asset) else save(lab.DATA,value));return
             if p.path=='/api/email-review/finish':
                 from email_review import finish_review
                 self.json(finish_review(lab.DATA,value));return
@@ -345,12 +433,18 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/api/training-control/start':
                 from auto_training.manual_training import Control
                 self.json(Control().request(value.get("ranking_measure","false_positive_rate")));return
+            if p.path=='/api/objects/pin':
+                from review_pins import update
+                self.json(update(lab.DATA,value));return
             if p.path=='/api/objects/star':
                 from detection_actions import set_star
                 self.json(set_star(lab.DATA,value));return
             if p.path=='/api/objects/omit':
                 from object_omission import omit
                 self.json(omit(lab.DATA,value));return
+            if p.path=='/api/objects/lease':
+                from label_queue import renew_review_leases
+                self.json(renew_review_leases(lab.DATA,value));return
             if p.path=='/api/objects/labels':
                 from detection_library import label_batch
                 self.json(label_batch(lab.DATA,value));return

@@ -1,4 +1,5 @@
 from recognition_history import History
+from recognition.journal_codec import decode_observations
 """Read-only suggestions aligned by exact encoded packet identity, never guessed time."""
 import bisect,hashlib,json,sqlite3
 from contextlib import closing
@@ -77,7 +78,7 @@ def proposals(vid,after=-1,limit=100):
   for sequence,encoded in rows:
    if sequence not in by_sequence:continue
    analyzed+=1;frame=by_sequence[sequence]
-   for observation in json.loads(encoded):
+   for observation in decode_observations(encoded):
     index=ordinal;ordinal+=1
     if index<=after or len(items)>=limit:continue
     x,y,w,h=observation['box'];track=hashlib.sha256(observation['proposed_track_id'].encode()).hexdigest()[:32]

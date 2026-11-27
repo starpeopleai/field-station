@@ -131,6 +131,8 @@ class AlertOutbox:
    # Publish once per spatial episode; unrelated objects never wait for a quota.
    if not (folder/'event.json').exists():
     atomic(folder/'event.json',event);publish_notice(self.root,event)
+    from air_traffic import attach
+    attach(self.root.parent.parent,folder,event)
     from review_color import request
     request(folder)
    g['notified']=True;queued+=1

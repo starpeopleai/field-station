@@ -64,7 +64,8 @@ def export(lab,out):
   target.parent.mkdir(parents=True,exist_ok=True)
   with tempfile.TemporaryDirectory(dir=target.parent) as tmp:
    temp=Path(tmp)/'snapshot';(temp/'images').mkdir(parents=True)
-   for name,data in images.items():(temp/name).write_bytes(data)
+   from training_storage import store_image
+   for name,data in images.items():store_image(temp/name,data,Path(out).parent/'training-objects')
    (temp/'reviews.json').write_text(json.dumps(manifest));temp.rename(target)
  return dict(fingerprint=manifest['fingerprint'],examples=len(manifest['samples']))
 if __name__=='__main__':

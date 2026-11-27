@@ -11,6 +11,7 @@ class CascadeTests(unittest.TestCase):
  def setup_controller(self,root):
   cfg=dict(enabled=True,runtime=str(root),comparison_root=str(root))
   c=types.SimpleNamespace(root=root,c={'cascade':cfg},state={'active_version':'stable','run_directory':str(root/'stable'),'phase':'deployed'},rpc=lambda *a,**k:None)
+  c.mark=lambda phase,**fields:c.state.update(phase=phase,**fields)
   return c
  def test_sequential_failure_continues_and_restart_does_not_retrain(self):
   with tempfile.TemporaryDirectory() as temporary:
@@ -37,3 +38,29 @@ class CascadeTests(unittest.TestCase):
     result=run_manual(c,{'id':'two'});self.assertEqual(calls,['human','experimental','hybrid','machine']);self.assertEqual(result['phase'],'evaluation_retry_pending')
     module.compare=lambda *a:{'state':'complete'}
     result=run_manual(c,{'id':'two'});self.assertEqual(len(calls),4);self.assertEqual(result['phase'],'complete')
+
+ def test_stable_exception_updates_training_history_status(self):
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);c=self.setup_controller(root)
+   c.state.update(phase='training')
+   c.tick=lambda:(_ for _ in ()).throw(ValueError('Image pool must share the source filesystem'))
+   module=types.SimpleNamespace(retry_publications=lambda *a:{},freeze_inputs=lambda *a:{'frozen':True},train_lane=lambda cfg,cycle,lane:{'version':lane},compare=lambda *a:{'state':'complete'})
+   with patch.dict('sys.modules',{'cascade_training':module,'worker':types.SimpleNamespace(model_folder=lambda *a:root/'stable')}):
+    result=run_manual(c,{'id':'failed-stable'})
+   self.assertEqual(result['steps']['human']['state'],'failed')
+   self.assertEqual(c.state['phase'],'error')
+   self.assertIn('source filesystem',c.state['reason'])
+
+ def test_connection_timeout_preserves_request_for_retry(self):
+  import subprocess
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);c=self.setup_controller(root);calls=[]
+   def tick():
+    calls.append('human')
+    if len(calls)==1:raise subprocess.TimeoutExpired('status',30)
+    c.state.update(manual_request_id='retry',phase='deployed')
+   c.tick=tick
+   module=types.SimpleNamespace(retry_publications=lambda *a:{},freeze_inputs=lambda *a:{'frozen':True},train_lane=lambda cfg,cycle,lane:{'version':lane},compare=lambda *a:{'state':'complete'})
+   with patch.dict('sys.modules',{'cascade_training':module,'worker':types.SimpleNamespace(model_folder=lambda *a:root/'stable')}):
+    first=run_manual(c,{'id':'retry'});self.assertEqual(first['phase'],'training_retry_pending');self.assertTrue(pending(c,'retry'));self.assertEqual(first['steps']['human']['state'],'pending');self.assertEqual(len(first['steps']),1)
+    result=run_manual(c,{'id':'retry'});self.assertEqual(result['phase'],'complete');self.assertFalse(pending(c,'retry'))
