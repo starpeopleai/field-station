@@ -23,7 +23,7 @@ def model_folder(root,version):
 
 def finish_training(root,folder,code,human_root,state):
  built=read(folder/'dataset.json');key=built['fingerprint']
- if state.get('publication',{}).get('version')!=key:state.pop('publication',None)
+ if (state.get('publication') or {}).get('version')!=key:state.pop('publication',None)
  state.pop('publication_error',None)
  state.update(phase='training');save(root/'status.json',state)
  with (folder/'training.log').open('a') as log:subprocess.run([sys.executable,str(code/'uap-lab/auto_training/train_candidate.py'),'--folder',str(folder),'--lock',str(human_root/'training.lock')],stdout=log,stderr=log,check=True,timeout=21600)

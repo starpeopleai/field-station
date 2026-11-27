@@ -71,6 +71,9 @@ def build_snapshot(cfg,cycle,lane):
  return folder
 
 def train_lane(cfg,cycle,lane):
+ if lane=='experimental':
+  from experimental_profile import bind
+  return bind(cfg['human_root'],cfg['lanes'][lane]['root'],cycle['stable_source'])
  root=Path(cfg['lanes'][lane]['root']);root.mkdir(parents=True,exist_ok=True)
  code=Path(cfg['code']);sys.path[:0]=[str(code/'uap-lab/auto_training'),str(code/'uap-lab/recognition'),str(code/'uap-lab')]
  # Serialize against collection and any worker already running before the cascade.
