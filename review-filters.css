@@ -1,0 +1,63 @@
+.review-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:24px;align-items:start}.review-content{min-width:0}#objectViews.review-sidebar{display:flex;flex-direction:column;gap:22px;overflow:visible;position:sticky;top:calc(var(--station-header-height,64px) + 12px);margin:0;padding:4px 0}.review-sidebar fieldset{border:0;padding:0;margin:0;min-width:0}.review-sidebar legend{font-size:11px;color:var(--muted);padding:0;margin-bottom:10px}.review-sidebar label{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;cursor:pointer;line-height:1.4}.review-sidebar input{accent-color:var(--ink);margin:0;flex:none}.review-sidebar .tab-count{margin-left:auto;font-size:10px;border:1px solid var(--line);border-radius:999px;padding:2px 6px;min-width:28px;text-align:center;font-variant-numeric:tabular-nums}.review-sidebar[aria-busy=true] .tab-count{opacity:.6}.review-sidebar .star-filter{border-top:1px solid var(--line);padding-top:14px}@media(max-width:750px){.review-layout{grid-template-columns:1fr;gap:16px}#objectViews.review-sidebar{position:static;display:grid;grid-template-columns:1fr 1fr;gap:12px 20px}.review-sidebar .star-filter{grid-column:1/-1;padding-top:10px}.review-sidebar label{font-size:11px}.review-sidebar legend{margin-bottom:4px}}
+.review-sidebar .star-filter[hidden]{display:none}
+
+/* Center the empty state in the available review stage, beside/below filters. */
+.review-layout:has(#queueEmpty:not([hidden])){min-height:calc(100dvh - 88px)}
+.review-content{position:relative;align-self:stretch}
+.review-content #queueEmpty:not([hidden]){position:absolute;inset:0;display:grid;place-items:center;margin:0;padding:16px;text-align:center}
+@media(max-width:750px){.review-layout:has(#queueEmpty:not([hidden])){grid-template-rows:auto minmax(160px,1fr)}}
+@media(max-width:600px){.review-layout:has(#queueEmpty:not([hidden])){min-height:calc(100dvh - 80px)}}
+
+
+.review-sidebar fieldset[hidden]{display:none}
+#detectionQueue.manual-recordings{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:16px;columns:auto;line-height:1.5}
+.manual-recording-card{padding:16px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px}
+.manual-recording-card h2{font-size:13px;font-weight:400;margin:0 0 8px}.manual-recording-card p{font-size:12px;color:var(--muted);margin:10px 0}.manual-recording-card video{display:block;width:100%;aspect-ratio:16/9;background:#000;margin:12px 0}.manual-recording-card a{display:inline-block;font-size:12px;margin:4px 16px 4px 0}.manual-state{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:3px 8px}
+
+.review-time {
+  order: 9;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.review-time summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  font: inherit;
+  font-size: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+.review-time summary::-webkit-details-marker { display: none }
+.review-time summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1px 1px 0;
+  transform: rotate(45deg);
+  margin: 0 5px 3px 12px;
+}
+.review-time[open] summary::after { transform: rotate(225deg); margin-bottom: -3px }
+.review-time .time-fields { display: grid; gap: 10px; margin: 6px 0 12px }
+.review-sidebar .review-time label { display: grid; gap: 4px; padding: 0; color: var(--muted); font-size: 11px }
+.review-time input[type=datetime-local] {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px;
+  margin: 0; padding: 5px 6px; color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; font: inherit; font-size: 12px;
+}
+.review-time .time-actions { display: flex; align-items: center; gap: 12px }
+#objectViews .review-time .time-actions button { margin: 0; min-height: 34px; padding: 4px 10px; font: inherit; font-size: 12px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 4px }
+@media(max-width:750px){
+  .review-time { grid-column: 1/-1 }
+  .review-time .time-fields { grid-template-columns: repeat(auto-fit,minmax(min(100%,165px),1fr)); gap: 10px 16px }
+}
+
+#objectViews.review-sidebar fieldset label { width:100%;box-sizing:border-box }
+#objectViews.review-sidebar .review-time summary { color:var(--ink) }
+#objectViews.review-sidebar .review-time input { font-size:11px;padding-inline:4px;letter-spacing:0 }
+@media(max-width:420px){.review-time .time-fields {grid-template-columns:1fr}}
+
+.review-time-clips:not(:empty){display:grid;gap:8px;margin-top:12px;font-size:12px}
