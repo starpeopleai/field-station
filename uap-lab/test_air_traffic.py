@@ -7,6 +7,25 @@ class TrafficTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);a.base(self.root).mkdir();self.now=time.time()
  def tearDown(self):self.temp.cleanup()
+ def test_live_screened_faa_and_adsb_fallback(self):
+  config=a.settings(self.root)
+  row=dict(hex='abc123',latitude=37,longitude=-122,position_epoch=self.now)
+  common=dict(status='available',schema=1,center_id=a.center_id(config),radius_nm=config['radius_nm'],
+              received_epoch=self.now,sampled_epoch=self.now)
+  adsb=dict(common,provider='adsb.fi',aircraft=[row,dict(row,hex='def456')])
+  faa=dict(common,provider='swim-tais',privacy_status='screened',policy_digest='a'*64,aircraft=[row,row])
+  a.atomic(a.base(self.root)/'latest.json',adsb)
+  path=a.base(self.root)/'faa-screened.json'
+  a.atomic(path,faa)
+  mixed=a.live(self.root,self.now)
+  self.assertTrue(mixed['faa_live'])
+  self.assertEqual([(r['hex'],r.get('faa')) for r in mixed['aircraft']],[('abc123',True),('def456',None)])
+  for invalid in [dict(privacy_status='pending'),dict(policy_digest=''),dict(center_id='old'),dict(received_epoch=self.now-31)]:
+   a.atomic(path,dict(faa,**invalid))
+   self.assertEqual(a.live(self.root,self.now)['provider'],'adsb.fi')
+  (a.base(self.root)/'latest.json').unlink()
+  a.atomic(path,faa)
+  self.assertEqual(a.live(self.root,self.now)['aircraft'],[dict(row,faa=True)])
  def test_focal_setting_and_projection(self):
   first=a.field_of_view({'camera_focal_length_mm':100,'camera_elevation_deg':0})
   self.assertAlmostEqual(first['horizontal_deg'],12.724,places=2)

@@ -1,4 +1,5 @@
 """Private ADS-B context. No automatic visual identification or public redistribution."""
+import re
 import argparse, contextlib, fcntl, hashlib, json, math, os, sqlite3, time, uuid, zlib
 from pathlib import Path
 import sys
@@ -164,10 +165,45 @@ def store(root, snapshot, namespace=""):
                 db.execute('DELETE FROM snapshots WHERE epoch=?',(epoch,));size-=length
                 if size<=60*1024**2:break
 
+def with_screened_faa(snapshot, faa, config, now):
+    """Combine fresh private display positions without changing either stored feed."""
+    center = center_id(config)
+    if not (isinstance(faa, dict) and faa.get('schema') == 1 and faa.get('provider') == 'swim-tais'
+            and faa.get('status') == 'available' and faa.get('privacy_status') == 'screened'
+            and isinstance(faa.get('policy_digest'), str) and re.fullmatch('[0-9a-f]{64}', faa['policy_digest'])
+            and faa.get('center_id') == center and faa.get('radius_nm') == config['radius_nm']
+            and isinstance(faa.get('aircraft'), list)
+            and all(number(faa.get(key)) and 0 <= now - faa[key] <= MAX_AGE for key in ('sampled_epoch', 'received_epoch'))):
+        return snapshot
+    tracks = {}
+    for row in faa['aircraft']:
+        if not isinstance(row, dict):
+            continue
+        address = str(row.get('hex', '')).lower()
+        if not (re.fullmatch('[0-9a-f]{6}', address) and number(row.get('position_epoch'))
+                and 0 <= now - row['position_epoch'] <= MAX_AGE
+                and number(row.get('latitude')) and -90 <= row['latitude'] <= 90
+                and number(row.get('longitude')) and -180 <= row['longitude'] <= 180):
+            continue
+        if address not in tracks or row['position_epoch'] > tracks[address]['position_epoch']:
+            tracks[address] = dict(row, hex=address, faa=True)
+    fresh_adsb = (snapshot.get('center_id') == center and snapshot.get('status') == 'available'
+                  and number(snapshot.get('sampled_epoch')) and 0 <= now - snapshot['sampled_epoch'] <= MAX_AGE)
+    rows = list(tracks.values())
+    if fresh_adsb:
+        for row in snapshot.get('aircraft', []):
+            if str(row.get('hex', '')).lower() not in tracks:
+                rows.append(row)
+    return dict(schema=1, status='available', provider='swim-tais', faa_live=True,
+                center_id=center, radius_nm=config['radius_nm'], aircraft=rows,
+                sampled_epoch=faa['sampled_epoch'], received_epoch=faa['received_epoch'])
+
+
 def live(root, now=None):
     now=time.time() if now is None else now
     result=read(base(root)/'latest.json',{'status':'unavailable','aircraft':[]})
     config=settings(root)
+    result=with_screened_faa(result,read(base(root)/'faa-screened.json'),config,now)
     if result.get('center_id')!=center_id(config):return dict(status='waiting',aircraft=[],center=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude']),radius_nm=config['radius_nm'],landmarks=config.get('landmarks',[]),camera_azimuth_deg=config.get('camera_azimuth_deg'),camera_elevation_deg=config.get('camera_elevation_deg'),camera_fov=field_of_view(config),station_elevation=station_elevation(root,config))
     result['center']=dict(address=config['address'],resolved_address=config.get('resolved_address',config['address']),latitude=config['latitude'],longitude=config['longitude'])
     from station_weather import live as current_weather
